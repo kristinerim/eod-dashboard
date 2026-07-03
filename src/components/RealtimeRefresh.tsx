@@ -14,8 +14,15 @@ export default function RealtimeRefresh({ tables, filter }: Props) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // The underlying Supabase client is a shared singleton, so under
+    // React Strict Mode's dev double-invoke, a stale effect run's async
+    // setup could otherwise land after a fresh run already subscribed a
+    // channel with the same name. Guard with a cancelled flag and a
+    // per-mount-unique channel name so each run only ever touches its own.
+    let cancelled = false;
     const supabase = createClient();
     let channel: ReturnType<typeof supabase.channel> | null = null;
+    const channelName = `realtime-refresh-${tables.join("-")}-${filter ?? "all"}-${Math.random().toString(36).slice(2)}`;
 
     const {
       data: { subscription: authSubscription },
@@ -24,9 +31,10 @@ export default function RealtimeRefresh({ tables, filter }: Props) {
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
       if (session) supabase.realtime.setAuth(session.access_token);
 
-      channel = supabase.channel(`realtime-refresh-${tables.join("-")}-${filter ?? "all"}`);
+      channel = supabase.channel(channelName);
       for (const table of tables) {
         channel.on(
           "postgres_changes",
@@ -41,6 +49,7 @@ export default function RealtimeRefresh({ tables, filter }: Props) {
     });
 
     return () => {
+      cancelled = true;
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       authSubscription.unsubscribe();
       if (channel) supabase.removeChannel(channel);

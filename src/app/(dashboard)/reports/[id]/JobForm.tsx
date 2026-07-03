@@ -134,7 +134,7 @@ export default function JobForm({ reportId, job, onClose }: Props) {
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Field label="Job status">
               <input
                 name="job_status"
@@ -147,6 +147,16 @@ export default function JobForm({ reportId, job, onClose }: Props) {
                   <option key={s} value={s} />
                 ))}
               </datalist>
+            </Field>
+            <Field label="ETA (minutes)">
+              <input
+                name="eta_minutes"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={job?.eta_minutes?.toString() ?? ""}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
             </Field>
             <Field label="State">
               <select
@@ -163,6 +173,10 @@ export default function JobForm({ reportId, job, onClose }: Props) {
               </select>
             </Field>
           </div>
+          <p className="text-xs text-black/50">
+            Setting status to &quot;Dispatched&quot; starts the ETA countdown from now, using the
+            minutes entered here.
+          </p>
 
           <Field label="Customer phone">
             <input

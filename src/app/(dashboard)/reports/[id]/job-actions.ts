@@ -19,6 +19,10 @@ function strOrNull(v: FormDataEntryValue | null): string | null {
   return s === "" ? null : s;
 }
 
+function isDispatchedStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "dispatched";
+}
+
 type ActionResult = { success: true; id?: string } | { error: string };
 
 export async function getOrCreateTodaysReport(): Promise<ActionResult> {
@@ -53,6 +57,7 @@ function jobFieldsFromForm(formData: FormData) {
     profit,
     vendor_name: strOrNull(formData.get("vendor_name")),
     job_status: strOrNull(formData.get("job_status")),
+    eta_minutes: numberOrNull(formData.get("eta_minutes")),
     state: strOrNull(formData.get("state")),
     customer_phone: strOrNull(formData.get("customer_phone")),
     customer_charged_via: strOrNull(formData.get("customer_charged_via")),
@@ -73,12 +78,15 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     .select("id", { count: "exact", head: true })
     .eq("report_id", reportId);
 
+  const fields = jobFieldsFromForm(formData);
+
   const { error } = await supabase.from("jobs").insert({
-    ...jobFieldsFromForm(formData),
+    ...fields,
     report_id: reportId,
     row_number: (count ?? 0) + 1,
     source: "manual",
     created_by: user.id,
+    dispatched_at: isDispatchedStatus(fields.job_status) ? new Date().toISOString() : null,
   });
 
   if (error) return { error: error.message };
@@ -88,14 +96,20 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
 }
 
 type TodaysJobCheck =
-  | { ok: true; supabase: Awaited<ReturnType<typeof createClient>>; reportId: string }
+  | {
+      ok: true;
+      supabase: Awaited<ReturnType<typeof createClient>>;
+      reportId: string;
+      currentStatus: string | null;
+      currentDispatchedAt: string | null;
+    }
   | { ok: false; error: string };
 
 async function requireTodaysJob(jobId: string): Promise<TodaysJobCheck> {
   const supabase = await createClient();
   const { data: existing, error } = await supabase
     .from("jobs")
-    .select("report_id, reports!inner(report_date)")
+    .select("report_id, job_status, dispatched_at, reports!inner(report_date)")
     .eq("id", jobId)
     .single();
 
@@ -106,17 +120,30 @@ async function requireTodaysJob(jobId: string): Promise<TodaysJobCheck> {
     return { ok: false, error: "Only today's entries can be edited or deleted." };
   }
 
-  return { ok: true, supabase, reportId: existing.report_id as string };
+  return {
+    ok: true,
+    supabase,
+    reportId: existing.report_id as string,
+    currentStatus: existing.job_status,
+    currentDispatchedAt: existing.dispatched_at,
+  };
 }
 
 export async function updateJob(jobId: string, formData: FormData): Promise<ActionResult> {
   const check = await requireTodaysJob(jobId);
   if (!check.ok) return { error: check.error };
-  const { supabase, reportId } = check;
+  const { supabase, reportId, currentStatus, currentDispatchedAt } = check;
+
+  const fields = jobFieldsFromForm(formData);
+  const dispatched_at = isDispatchedStatus(fields.job_status)
+    ? isDispatchedStatus(currentStatus) && currentDispatchedAt
+      ? currentDispatchedAt
+      : new Date().toISOString()
+    : null;
 
   const { error } = await supabase
     .from("jobs")
-    .update(jobFieldsFromForm(formData))
+    .update({ ...fields, dispatched_at })
     .eq("id", jobId);
 
   if (error) return { error: error.message };

@@ -146,3 +146,7 @@ begin
     alter publication supabase_realtime add table reports;
   end if;
 end $$;
+
+-- Dispatched-job ETA countdown feature.
+alter table jobs add column if not exists eta_minutes integer;
+alter table jobs add column if not exists dispatched_at timestamptz;

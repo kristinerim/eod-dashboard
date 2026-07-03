@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { summarizeJobs, todayISO, weekRangeFor, type JobSummaryInput } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
+import DispatchedList, { type DispatchedJob } from "@/components/DispatchedList";
 import AddTodayJobButton from "./AddTodayJobButton";
 
 function formatCurrency(n: number) {
@@ -86,6 +87,21 @@ export default async function DashboardPage() {
   const weekJobs = weekReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
   const weekSummary = summarizeJobs(weekJobs);
 
+  const todaysReport = reports.find((r) => r.report_date === today);
+  let dispatchedJobs: DispatchedJob[] = [];
+  if (todaysReport) {
+    const { data } = await supabase
+      .from("jobs")
+      .select(
+        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, dispatched_at, eta_minutes"
+      )
+      .eq("report_id", todaysReport.id)
+      .ilike("job_status", "dispatched")
+      .not("dispatched_at", "is", null)
+      .not("eta_minutes", "is", null);
+    dispatchedJobs = (data ?? []) as DispatchedJob[];
+  }
+
   return (
     <div className="space-y-8">
       <RealtimeRefresh tables={["jobs", "reports"]} />
@@ -103,6 +119,18 @@ export default async function DashboardPage() {
         <Card label="Job amount" value={formatCurrency(weekSummary.totalJobAmount)} />
         <Card label="Vendor payment" value={formatCurrency(weekSummary.totalVendorFee)} />
       </div>
+
+      {dispatchedJobs.length > 0 && (
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Dispatched — nearing ETA</h2>
+            <Link href="/dispatched" className="text-sm underline">
+              View all dispatched
+            </Link>
+          </div>
+          <DispatchedList jobs={dispatchedJobs} limit={10} viewAllHref="/dispatched" />
+        </div>
+      )}
 
       <div>
         <div className="mb-2 flex items-center justify-between">

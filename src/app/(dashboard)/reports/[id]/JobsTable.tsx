@@ -20,6 +20,8 @@ export interface Job {
   vendor_name: string | null;
   last4_vpc: string | null;
   job_status: string | null;
+  eta_minutes: number | null;
+  dispatched_at: string | null;
   dispatched_time: string | null;
   vendor_eta: string | null;
   reviewed_by: string | null;
@@ -50,6 +52,7 @@ const COLUMNS: Column[] = [
   { key: "profit", label: "Profit", currency: true },
   { key: "vendor_name", label: "Vendor" },
   { key: "job_status", label: "Status" },
+  { key: "eta_minutes", label: "ETA (min)" },
   { key: "state", label: "State" },
   { key: "customer_phone", label: "Customer phone" },
   { key: "customer_charged_via", label: "Charged via" },
