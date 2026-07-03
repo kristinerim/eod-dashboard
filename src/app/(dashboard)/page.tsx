@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { summarizeJobs, todayISO, weekRangeFor, type JobSummaryInput } from "@/lib/aggregate";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
+import AddTodayJobButton from "./AddTodayJobButton";
 
-function formatCurrency(n: number | null) {
-  if (n === null) return "-";
+function formatCurrency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
@@ -15,13 +17,31 @@ function formatDate(d: string) {
   });
 }
 
+function formatShortDate(d: string) {
+  return new Date(`${d}T00:00:00`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+interface JobRow extends JobSummaryInput {
+  report_id: string;
+}
+
+function Card({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-lg border border-black/10 p-3">
+      <div className="text-xs text-black/50">{label}</div>
+      <div className="mt-1 text-base font-semibold">{value}</div>
+    </div>
+  );
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: reports, error } = await supabase
     .from("reports")
-    .select(
-      "id, report_date, total_profit, total_converted_jobs, total_completed_jobs, total_cancelled_jobs"
-    )
+    .select("id, report_date")
     .order("report_date", { ascending: false });
 
   if (error) {
@@ -30,46 +50,99 @@ export default async function DashboardPage() {
 
   if (!reports || reports.length === 0) {
     return (
-      <div className="text-sm text-black/70">
-        No reports yet.{" "}
-        <Link href="/upload" className="underline">
-          Upload your first EOD report
-        </Link>
-        .
+      <div className="space-y-4">
+        <AddTodayJobButton />
+        <p className="text-sm text-black/70">
+          No reports yet. Add today&apos;s first job above, or{" "}
+          <Link href="/upload" className="underline">
+            upload an EOD report
+          </Link>
+          .
+        </p>
       </div>
     );
   }
 
+  const { data: jobs } = await supabase
+    .from("jobs")
+    .select("report_id, profit, job_amount, vendors_fee, job_status, customer_charged_via")
+    .in(
+      "report_id",
+      reports.map((r) => r.id)
+    );
+
+  const jobsByReport = new Map<string, JobRow[]>();
+  for (const j of (jobs ?? []) as JobRow[]) {
+    const list = jobsByReport.get(j.report_id) ?? [];
+    list.push(j);
+    jobsByReport.set(j.report_id, list);
+  }
+
+  const today = todayISO();
+  const { start: weekStart, end: weekEnd } = weekRangeFor(today);
+  const weekReportIds = reports
+    .filter((r) => r.report_date >= weekStart && r.report_date <= weekEnd)
+    .map((r) => r.id);
+  const weekJobs = weekReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
+  const weekSummary = summarizeJobs(weekJobs);
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold">Reports</h1>
-      <div className="overflow-hidden rounded-lg border border-black/10">
-        <table className="w-full text-sm">
-          <thead className="bg-black/5 text-left">
-            <tr>
-              <th className="px-4 py-2 font-medium">Date</th>
-              <th className="px-4 py-2 font-medium">Profit</th>
-              <th className="px-4 py-2 font-medium">Converted jobs</th>
-              <th className="px-4 py-2 font-medium">Completed</th>
-              <th className="px-4 py-2 font-medium">Cancelled</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reports.map((r) => (
-              <tr key={r.id} className="border-t border-black/10 hover:bg-black/[0.03]">
-                <td className="px-4 py-2">
-                  <Link href={`/reports/${r.id}`} className="underline">
-                    {formatDate(r.report_date)}
-                  </Link>
-                </td>
-                <td className="px-4 py-2">{formatCurrency(r.total_profit)}</td>
-                <td className="px-4 py-2">{r.total_converted_jobs ?? "-"}</td>
-                <td className="px-4 py-2">{r.total_completed_jobs ?? "-"}</td>
-                <td className="px-4 py-2">{r.total_cancelled_jobs ?? "-"}</td>
+    <div className="space-y-8">
+      <RealtimeRefresh tables={["jobs", "reports"]} />
+
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold">
+          This week ({formatShortDate(weekStart)} – {formatShortDate(weekEnd)})
+        </h1>
+        <AddTodayJobButton />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Card label="Profit" value={formatCurrency(weekSummary.totalProfit)} />
+        <Card label="Jobs" value={weekSummary.jobCount} />
+        <Card label="Job amount" value={formatCurrency(weekSummary.totalJobAmount)} />
+        <Card label="Vendor payment" value={formatCurrency(weekSummary.totalVendorFee)} />
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Reports</h2>
+          <Link href="/weekly" className="text-sm underline">
+            View weekly summaries
+          </Link>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-black/10">
+          <table className="w-full text-sm">
+            <thead className="bg-black/5 text-left">
+              <tr>
+                <th className="px-4 py-2 font-medium">Date</th>
+                <th className="px-4 py-2 font-medium">Profit</th>
+                <th className="px-4 py-2 font-medium">Jobs</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {reports.map((r) => {
+                const s = summarizeJobs(jobsByReport.get(r.id) ?? []);
+                return (
+                  <tr key={r.id} className="border-t border-black/10 hover:bg-black/[0.03]">
+                    <td className="px-4 py-2">
+                      <Link href={`/reports/${r.id}`} className="underline">
+                        {formatDate(r.report_date)}
+                      </Link>
+                      {r.report_date === today && (
+                        <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          Today
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">{formatCurrency(s.totalProfit)}</td>
+                    <td className="px-4 py-2">{s.jobCount}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

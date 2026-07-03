@@ -19,6 +19,9 @@ export default async function DashboardLayout({
           EOD Report Dashboard
         </Link>
         <div className="flex items-center gap-4 text-sm">
+          <Link href="/weekly" className="text-black/70 hover:text-black">
+            Weekly summaries
+          </Link>
           <Link href="/upload" className="text-black/70 hover:text-black">
             Upload report
           </Link>

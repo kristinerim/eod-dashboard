@@ -1,6 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import JobForm from "./JobForm";
+import { deleteJob } from "./job-actions";
 
 export interface Job {
   id: string;
@@ -70,12 +73,36 @@ function formatCurrency(n: number | null) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
-export default function JobsTable({ jobs }: { jobs: Job[] }) {
+export default function JobsTable({
+  jobs,
+  reportId,
+  isToday = false,
+}: {
+  jobs: Job[];
+  reportId: string;
+  isToday?: boolean;
+}) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [stateFilter, setStateFilter] = useState("");
   const [sortKey, setSortKey] = useState<keyof Job>("row_number");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
+  const [editingJob, setEditingJob] = useState<Job | null>(null);
+  const [addingJob, setAddingJob] = useState(false);
+
+  function handleDelete(jobId: string) {
+    if (!confirm("Delete this job entry?")) return;
+    startTransition(async () => {
+      const result = await deleteJob(jobId);
+      if ("error" in result) {
+        alert(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   const statuses = useMemo(
     () => Array.from(new Set(jobs.map((j) => j.job_status).filter(Boolean))).sort(),
@@ -155,6 +182,15 @@ export default function JobsTable({ jobs }: { jobs: Job[] }) {
         <span className="self-center text-xs text-black/50">
           {sorted.length} of {jobs.length}
         </span>
+        {isToday && (
+          <button
+            onClick={() => setAddingJob(true)}
+            className="ml-auto rounded bg-black px-3 py-1.5 text-sm font-medium text-white"
+            type="button"
+          >
+            + Add job
+          </button>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-black/10">
@@ -171,6 +207,7 @@ export default function JobsTable({ jobs }: { jobs: Job[] }) {
                   {sortKey === c.key ? (sortDir === 1 ? " ▲" : " ▼") : ""}
                 </th>
               ))}
+              {isToday && <th className="whitespace-nowrap px-3 py-2 font-medium">Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -183,11 +220,35 @@ export default function JobsTable({ jobs }: { jobs: Job[] }) {
                       : (j[c.key] as string | number | null) ?? "-"}
                   </td>
                 ))}
+                {isToday && (
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <button
+                      onClick={() => setEditingJob(j)}
+                      className="mr-2 text-black/60 hover:text-black hover:underline"
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDelete(j.id)}
+                      disabled={isPending}
+                      className="text-red-600 hover:underline disabled:opacity-50"
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {addingJob && <JobForm reportId={reportId} onClose={() => setAddingJob(false)} />}
+      {editingJob && (
+        <JobForm reportId={reportId} job={editingJob} onClose={() => setEditingJob(null)} />
+      )}
     </div>
   );
 }

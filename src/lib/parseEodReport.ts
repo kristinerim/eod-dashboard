@@ -1,4 +1,7 @@
 import * as XLSX from "xlsx";
+import { US_STATE_CODES, PLATFORMS } from "./constants";
+
+const US_STATE_CODE_SET = new Set(US_STATE_CODES);
 
 function toNumber(v: unknown): number | null {
   if (v === null || v === undefined || v === "") return null;
@@ -65,25 +68,7 @@ const CURRENCY_FIELDS = new Set([
   "profit",
 ]);
 
-const US_STATE_CODES = new Set([
-  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
-  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
-  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
-  "VA","WA","WV","WI","WY","DC","PR",
-]);
-
 const PHONE_RE = /^\d{10,11}$/;
-
-const KNOWN_PLATFORMS = [
-  "SLASH",
-  "NEW AUTHORIZE",
-  "BREX",
-  "TAILOREDPAYNEW",
-  "WORKIZPAY",
-  "WORKIZ",
-  "DIGITAS",
-  "TAILOREDPAY",
-];
 
 export interface ParsedPlatform {
   platform: string;
@@ -189,7 +174,7 @@ export function parseEodWorkbook(buffer: ArrayBuffer): ParsedReport[] {
       const row = block[r] ?? [];
       for (let c = 0; c < row.length; c++) {
         const cellText = norm(row[c]);
-        if (KNOWN_PLATFORMS.includes(cellText)) {
+        if (PLATFORMS.includes(cellText)) {
           platformBreakdown.push({
             platform: cellText,
             rate: toNumber(row[c + 1]),
@@ -242,7 +227,7 @@ export function parseEodWorkbook(buffer: ArrayBuffer): ParsedReport[] {
       if (searchStart !== null) {
         for (let c = searchStart; c < Math.min(searchStart + 4, row.length); c++) {
           const t = norm(row[c]);
-          if (US_STATE_CODES.has(t)) {
+          if (US_STATE_CODE_SET.has(t)) {
             job.state = t;
             break;
           }

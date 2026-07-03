@@ -63,7 +63,8 @@ export async function POST(request: Request) {
     const { error: deleteError } = await supabase
       .from("jobs")
       .delete()
-      .eq("report_id", report.id);
+      .eq("report_id", report.id)
+      .eq("source", "upload");
 
     if (deleteError) {
       return NextResponse.json(
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const rows = parsed.jobs.map((j) => ({ ...j, report_id: report.id }));
+    const rows = parsed.jobs.map((j) => ({ ...j, report_id: report.id, source: "upload" }));
     const batchSize = 100;
     for (let i = 0; i < rows.length; i += batchSize) {
       const batch = rows.slice(i, i + batchSize);

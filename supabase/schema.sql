@@ -82,3 +82,67 @@ begin
     alter table reports add constraint reports_report_date_key unique (report_date);
   end if;
 end $$;
+
+-- Live team entry: source column, same-day edit/delete RLS, realtime.
+alter table jobs add column if not exists source text not null default 'manual';
+update jobs set source = 'upload' where source = 'manual';
+-- (the update above assumes all rows so far came from Excel upload; safe one-time backfill)
+
+alter table jobs add column if not exists created_by uuid references auth.users(id);
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'jobs' and policyname = 'authenticated can update same-day jobs'
+  ) then
+    create policy "authenticated can update same-day jobs" on jobs
+      for update to authenticated
+      using (report_id in (select id from reports where report_date = current_date))
+      with check (report_id in (select id from reports where report_date = current_date));
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'jobs' and policyname = 'authenticated can delete same-day jobs'
+  ) then
+    create policy "authenticated can delete same-day jobs" on jobs
+      for delete to authenticated
+      using (report_id in (select id from reports where report_date = current_date));
+  end if;
+
+  -- Missing since day one: upsert-by-report_date (used by both upload and
+  -- getOrCreateTodaysReport) needs UPDATE, not just INSERT, on reports.
+  if not exists (
+    select 1 from pg_policies where tablename = 'reports' and policyname = 'authenticated can update reports'
+  ) then
+    create policy "authenticated can update reports" on reports
+      for update to authenticated
+      using (true)
+      with check (true);
+  end if;
+
+  -- The same-day restriction above only protects manual entries. Re-uploading
+  -- an Excel file for any date (including past ones) must still be able to
+  -- delete-and-replace its own 'upload'-sourced rows regardless of date.
+  if not exists (
+    select 1 from pg_policies where tablename = 'jobs' and policyname = 'authenticated can delete upload-sourced jobs'
+  ) then
+    create policy "authenticated can delete upload-sourced jobs" on jobs
+      for delete to authenticated
+      using (source = 'upload');
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'jobs'
+  ) then
+    alter publication supabase_realtime add table jobs;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'reports'
+  ) then
+    alter publication supabase_realtime add table reports;
+  end if;
+end $$;

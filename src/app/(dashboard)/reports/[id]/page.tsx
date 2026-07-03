@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import JobsTable, { type Job } from "./JobsTable";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
+import { summarizeJobs, todayISO } from "@/lib/aggregate";
 
-function formatCurrency(n: number | null) {
-  if (n === null) return "-";
+function formatCurrency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 }
 
@@ -16,13 +17,6 @@ function formatDate(d: string) {
   });
 }
 
-interface PlatformRow {
-  platform: string;
-  rate: number | null;
-  count: number | null;
-  amount: number | null;
-}
-
 export default async function ReportDetailPage({
   params,
 }: {
@@ -33,7 +27,7 @@ export default async function ReportDetailPage({
 
   const { data: report } = await supabase
     .from("reports")
-    .select("*")
+    .select("id, report_date")
     .eq("id", id)
     .single();
 
@@ -45,23 +39,31 @@ export default async function ReportDetailPage({
     .eq("report_id", id)
     .order("row_number", { ascending: true });
 
-  const platformBreakdown = (report.platform_breakdown ?? []) as PlatformRow[];
+  const jobList = (jobs ?? []) as Job[];
+  const summary = summarizeJobs(jobList);
+  const isToday = report.report_date === todayISO();
 
   const cards = [
-    { label: "Total profit", value: formatCurrency(report.total_profit) },
-    { label: "Converted jobs", value: report.total_converted_jobs ?? "-" },
-    { label: "Total job amount", value: formatCurrency(report.total_job_amount) },
-    { label: "Vendor payment", value: formatCurrency(report.total_vendor_payment) },
-    { label: "Refunded to client", value: formatCurrency(report.total_refunded_to_client) },
-    { label: "Completed jobs", value: report.total_completed_jobs ?? "-" },
-    { label: "Cancelled jobs", value: report.total_cancelled_jobs ?? "-" },
+    { label: "Total profit", value: formatCurrency(summary.totalProfit) },
+    { label: "Total jobs", value: summary.jobCount },
+    { label: "Total job amount", value: formatCurrency(summary.totalJobAmount) },
+    { label: "Vendor payment", value: formatCurrency(summary.totalVendorFee) },
   ];
 
   return (
     <div className="space-y-8">
-      <h1 className="text-lg font-semibold">{formatDate(report.report_date)}</h1>
+      {isToday && <RealtimeRefresh tables={["jobs"]} filter={`report_id=eq.${id}`} />}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+      <h1 className="flex items-center gap-2 text-lg font-semibold">
+        {formatDate(report.report_date)}
+        {isToday && (
+          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+            Today · live
+          </span>
+        )}
+      </h1>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {cards.map((c) => (
           <div key={c.label} className="rounded-lg border border-black/10 p-3">
             <div className="text-xs text-black/50">{c.label}</div>
@@ -70,27 +72,45 @@ export default async function ReportDetailPage({
         ))}
       </div>
 
-      {platformBreakdown.length > 0 && (
+      <div className="grid gap-8 sm:grid-cols-2">
         <div>
-          <h2 className="mb-2 text-sm font-semibold">Platform breakdown</h2>
+          <h2 className="mb-2 text-sm font-semibold">By status</h2>
+          <div className="overflow-hidden rounded-lg border border-black/10">
+            <table className="w-full text-sm">
+              <thead className="bg-black/5 text-left">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium">Jobs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summary.statusBreakdown.map((s) => (
+                  <tr key={s.status} className="border-t border-black/10">
+                    <td className="px-4 py-2">{s.status}</td>
+                    <td className="px-4 py-2">{s.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h2 className="mb-2 text-sm font-semibold">By platform (charged via)</h2>
           <div className="overflow-hidden rounded-lg border border-black/10">
             <table className="w-full text-sm">
               <thead className="bg-black/5 text-left">
                 <tr>
                   <th className="px-4 py-2 font-medium">Platform</th>
-                  <th className="px-4 py-2 font-medium">Rate</th>
-                  <th className="px-4 py-2 font-medium">Count</th>
+                  <th className="px-4 py-2 font-medium">Jobs</th>
                   <th className="px-4 py-2 font-medium">Amount</th>
                 </tr>
               </thead>
               <tbody>
-                {platformBreakdown.map((p, i) => (
-                  <tr key={i} className="border-t border-black/10">
+                {summary.platformBreakdown.map((p) => (
+                  <tr key={p.platform} className="border-t border-black/10">
                     <td className="px-4 py-2">{p.platform}</td>
-                    <td className="px-4 py-2">
-                      {p.rate !== null ? `${(p.rate * 100).toFixed(2)}%` : "-"}
-                    </td>
-                    <td className="px-4 py-2">{p.count ?? "-"}</td>
+                    <td className="px-4 py-2">{p.count}</td>
                     <td className="px-4 py-2">{formatCurrency(p.amount)}</td>
                   </tr>
                 ))}
@@ -98,11 +118,11 @@ export default async function ReportDetailPage({
             </table>
           </div>
         </div>
-      )}
+      </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-semibold">Jobs ({jobs?.length ?? 0})</h2>
-        <JobsTable jobs={(jobs ?? []) as Job[]} />
+        <h2 className="mb-2 text-sm font-semibold">Jobs ({jobList.length})</h2>
+        <JobsTable jobs={jobList} reportId={id} isToday={isToday} />
       </div>
     </div>
   );
