@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import JobForm from "./JobForm";
 import { deleteJob } from "./job-actions";
 
@@ -210,7 +211,7 @@ export default function JobsTable({
                   {sortKey === c.key ? (sortDir === 1 ? " ▲" : " ▼") : ""}
                 </th>
               ))}
-              {isToday && <th className="whitespace-nowrap px-3 py-2 font-medium">Actions</th>}
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -223,25 +224,34 @@ export default function JobsTable({
                       : (j[c.key] as string | number | null) ?? "-"}
                   </td>
                 ))}
-                {isToday && (
-                  <td className="whitespace-nowrap px-3 py-2">
-                    <button
-                      onClick={() => setEditingJob(j)}
-                      className="mr-2 text-black/60 hover:text-black hover:underline"
-                      type="button"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(j.id)}
-                      disabled={isPending}
-                      className="text-red-600 hover:underline disabled:opacity-50"
-                      type="button"
-                    >
-                      Delete
-                    </button>
-                  </td>
-                )}
+                <td className="whitespace-nowrap px-3 py-2">
+                  <Link
+                    href={`/reports/${reportId}/jobs/${j.id}`}
+                    target="_blank"
+                    className="mr-2 text-black/60 hover:text-black hover:underline"
+                  >
+                    View
+                  </Link>
+                  {isToday && (
+                    <>
+                      <button
+                        onClick={() => setEditingJob(j)}
+                        className="mr-2 text-black/60 hover:text-black hover:underline"
+                        type="button"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(j.id)}
+                        disabled={isPending}
+                        className="text-red-600 hover:underline disabled:opacity-50"
+                        type="button"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
