@@ -201,6 +201,9 @@ export default function JobsTable({
         <table className="w-full min-w-max text-sm">
           <thead className="bg-black/5 text-left">
             <tr>
+              <th className="sticky left-0 z-10 whitespace-nowrap bg-black/5 px-3 py-2 font-medium">
+                Actions
+              </th>
               {COLUMNS.map((c) => (
                 <th
                   key={c.key}
@@ -211,20 +214,12 @@ export default function JobsTable({
                   {sortKey === c.key ? (sortDir === 1 ? " ▲" : " ▼") : ""}
                 </th>
               ))}
-              <th className="whitespace-nowrap px-3 py-2 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((j) => (
-              <tr key={j.id} className="border-t border-black/10 hover:bg-black/[0.03]">
-                {COLUMNS.map((c) => (
-                  <td key={c.key} className="whitespace-nowrap px-3 py-2">
-                    {c.currency
-                      ? formatCurrency(j[c.key] as number | null)
-                      : (j[c.key] as string | number | null) ?? "-"}
-                  </td>
-                ))}
-                <td className="whitespace-nowrap px-3 py-2">
+              <tr key={j.id} className="group border-t border-black/10 hover:bg-black/[0.03]">
+                <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-2 group-hover:bg-black/[0.03]">
                   <Link
                     href={`/reports/${reportId}/jobs/${j.id}`}
                     target="_blank"
@@ -252,6 +247,13 @@ export default function JobsTable({
                     </>
                   )}
                 </td>
+                {COLUMNS.map((c) => (
+                  <td key={c.key} className="whitespace-nowrap px-3 py-2">
+                    {c.currency
+                      ? formatCurrency(j[c.key] as number | null)
+                      : (j[c.key] as string | number | null) ?? "-"}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
