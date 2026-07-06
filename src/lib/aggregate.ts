@@ -51,8 +51,11 @@ export function summarizeJobs(jobs: JobSummaryInput[]): JobSummary {
   };
 }
 
+const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/** Today's date in Philippine Time (UTC+8, no DST), matching the team's working day. */
 export function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  return new Date(Date.now() + PHT_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 /** Sunday-Saturday week containing the given ISO date. */

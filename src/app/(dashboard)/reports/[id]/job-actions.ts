@@ -2,10 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISO } from "@/lib/aggregate";
 
 function numberOrNull(v: FormDataEntryValue | null): number | null {
   if (v === null || v === "") return null;

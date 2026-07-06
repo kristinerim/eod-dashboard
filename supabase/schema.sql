@@ -150,3 +150,18 @@ end $$;
 -- Dispatched-job ETA countdown feature.
 alter table jobs add column if not exists eta_minutes integer;
 alter table jobs add column if not exists dispatched_at timestamptz;
+
+-- Align same-day edit/delete cutoff with the team's Philippine Time
+-- working day instead of the database's default UTC clock.
+alter policy "authenticated can update same-day jobs" on jobs
+  using (report_id in (
+    select id from reports where report_date = ((now() at time zone 'Asia/Manila')::date)
+  ))
+  with check (report_id in (
+    select id from reports where report_date = ((now() at time zone 'Asia/Manila')::date)
+  ));
+
+alter policy "authenticated can delete same-day jobs" on jobs
+  using (report_id in (
+    select id from reports where report_date = ((now() at time zone 'Asia/Manila')::date)
+  ));
