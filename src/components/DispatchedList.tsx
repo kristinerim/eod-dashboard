@@ -45,6 +45,7 @@ export default function DispatchedList({ jobs, limit, viewAllHref }: Props) {
         <table className="w-full text-sm">
           <thead className="bg-black/5 text-left">
             <tr>
+              <th className="px-4 py-2 font-medium">Actions</th>
               <th className="px-4 py-2 font-medium">Agent</th>
               <th className="px-4 py-2 font-medium">Job #</th>
               <th className="px-4 py-2 font-medium">Vendor</th>
@@ -54,7 +55,16 @@ export default function DispatchedList({ jobs, limit, viewAllHref }: Props) {
           </thead>
           <tbody>
             {shown.map(({ job, deadline }) => (
-              <tr key={job.id} className="border-t border-black/10">
+              <tr key={job.id} className="border-t border-black/10 hover:bg-black/[0.03]">
+                <td className="px-4 py-2">
+                  <Link
+                    href={`/reports/${job.report_id}/jobs/${job.id}`}
+                    target="_blank"
+                    className="text-black/60 hover:text-black hover:underline"
+                  >
+                    View
+                  </Link>
+                </td>
                 <td className="px-4 py-2">{job.agent ?? "-"}</td>
                 <td className="px-4 py-2">{job.job_number ?? "-"}</td>
                 <td className="px-4 py-2">{job.vendor_name ?? "-"}</td>
