@@ -21,6 +21,7 @@ export interface Job {
   vendor_name: string | null;
   last4_vpc: string | null;
   job_status: string | null;
+  cancellation_reason: string | null;
   eta_minutes: number | null;
   dispatched_at: string | null;
   dispatched_time: string | null;
@@ -53,6 +54,7 @@ const COLUMNS: Column[] = [
   { key: "profit", label: "Profit", currency: true },
   { key: "vendor_name", label: "Vendor" },
   { key: "job_status", label: "Status" },
+  { key: "cancellation_reason", label: "Cancellation reason" },
   { key: "eta_minutes", label: "ETA (min)" },
   { key: "state", label: "State" },
   { key: "customer_phone", label: "Customer phone" },

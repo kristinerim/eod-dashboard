@@ -21,12 +21,20 @@ function revalidateJob(reportId: string, jobId: string) {
   revalidatePath("/dispatched");
 }
 
-export async function cancelJob(jobId: string, reportId: string): Promise<ActionResult> {
+export async function cancelJob(
+  jobId: string,
+  reportId: string,
+  reason: string
+): Promise<ActionResult> {
   const user = await requireUser();
   if (!user) return { error: "Not signed in." };
+  if (!reason.trim()) return { error: "Enter a reason for the cancellation." };
 
   const admin = createAdminClient();
-  const { error } = await admin.from("jobs").update({ job_status: "Cancelled" }).eq("id", jobId);
+  const { error } = await admin
+    .from("jobs")
+    .update({ job_status: "Cancelled", cancellation_reason: reason.trim() })
+    .eq("id", jobId);
   if (error) return { error: error.message };
 
   revalidateJob(reportId, jobId);

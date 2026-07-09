@@ -177,3 +177,6 @@ alter policy "authenticated can update same-day jobs" on jobs
 
 alter policy "authenticated can delete same-day jobs" on jobs
   using (true);
+
+-- Capture why a job was cancelled.
+alter table jobs add column if not exists cancellation_reason text;

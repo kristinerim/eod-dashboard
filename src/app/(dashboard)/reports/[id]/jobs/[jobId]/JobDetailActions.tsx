@@ -19,10 +19,12 @@ export default function JobDetailActions({
   const [error, setError] = useState<string | null>(null);
 
   function handleCancel() {
-    if (!confirm("Mark this job as cancelled?")) return;
+    const reason = prompt("Why is this job being cancelled?", job.cancellation_reason ?? "");
+    if (reason === null) return;
+    if (!reason.trim()) return setError("Enter a reason for the cancellation.");
     setError(null);
     startTransition(async () => {
-      const result = await cancelJob(job.id, reportId);
+      const result = await cancelJob(job.id, reportId, reason);
       if ("error" in result) return setError(result.error);
       router.refresh();
     });
