@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { todayISO } from "@/lib/aggregate";
 import type { Job } from "../../JobsTable";
 import JobDetailActions from "./JobDetailActions";
 
@@ -48,8 +47,6 @@ export default async function JobDetailPage({
     .single();
 
   if (!job) notFound();
-
-  const isToday = report.report_date === todayISO();
 
   const sections: { title: string; fields: { label: string; value: React.ReactNode }[] }[] = [
     {
@@ -117,7 +114,7 @@ export default async function JobDetailPage({
         </span>
       </div>
 
-      <JobDetailActions job={job as Job} reportId={id} isToday={isToday} />
+      <JobDetailActions job={job as Job} reportId={id} />
 
       {sections.map((section) => (
         <div key={section.title}>

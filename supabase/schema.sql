@@ -165,3 +165,15 @@ alter policy "authenticated can delete same-day jobs" on jobs
   using (report_id in (
     select id from reports where report_date = ((now() at time zone 'Asia/Manila')::date)
   ));
+
+-- Field edits (and deletes) should no longer be limited to the day a
+-- job was entered — allow any authenticated user to update/delete any
+-- job regardless of date. (Cancel/Refund/Delete on the job detail page
+-- already bypassed this via the admin client; this makes the regular
+-- edit/delete paths consistent with that.)
+alter policy "authenticated can update same-day jobs" on jobs
+  using (true)
+  with check (true);
+
+alter policy "authenticated can delete same-day jobs" on jobs
+  using (true);

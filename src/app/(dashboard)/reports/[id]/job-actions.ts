@@ -92,7 +92,7 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
   return { success: true };
 }
 
-type TodaysJobCheck =
+type JobContext =
   | {
       ok: true;
       supabase: Awaited<ReturnType<typeof createClient>>;
@@ -102,20 +102,20 @@ type TodaysJobCheck =
     }
   | { ok: false; error: string };
 
-async function requireTodaysJob(jobId: string): Promise<TodaysJobCheck> {
+async function requireJobContext(jobId: string): Promise<JobContext> {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+
   const { data: existing, error } = await supabase
     .from("jobs")
-    .select("report_id, job_status, dispatched_at, reports!inner(report_date)")
+    .select("report_id, job_status, dispatched_at")
     .eq("id", jobId)
     .single();
 
   if (error || !existing) return { ok: false, error: "Job not found." };
-
-  const reportDate = (existing.reports as unknown as { report_date: string }).report_date;
-  if (reportDate !== todayISO()) {
-    return { ok: false, error: "Only today's entries can be edited or deleted." };
-  }
 
   return {
     ok: true,
@@ -127,7 +127,7 @@ async function requireTodaysJob(jobId: string): Promise<TodaysJobCheck> {
 }
 
 export async function updateJob(jobId: string, formData: FormData): Promise<ActionResult> {
-  const check = await requireTodaysJob(jobId);
+  const check = await requireJobContext(jobId);
   if (!check.ok) return { error: check.error };
   const { supabase, reportId, currentStatus, currentDispatchedAt } = check;
 
@@ -150,7 +150,7 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
 }
 
 export async function deleteJob(jobId: string): Promise<ActionResult> {
-  const check = await requireTodaysJob(jobId);
+  const check = await requireJobContext(jobId);
   if (!check.ok) return { error: check.error };
   const { supabase, reportId } = check;
 

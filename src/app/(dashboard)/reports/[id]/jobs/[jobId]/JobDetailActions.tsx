@@ -9,11 +9,9 @@ import { cancelJob, refundJob, deleteJobAnyDay } from "./actions";
 export default function JobDetailActions({
   job,
   reportId,
-  isToday,
 }: {
   job: Job;
   reportId: string;
-  isToday: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -58,9 +56,7 @@ export default function JobDetailActions({
       <div className="flex flex-wrap gap-2">
         <button
           onClick={() => setEditing(true)}
-          disabled={!isToday}
-          title={isToday ? undefined : "Only today's entries can have their details edited"}
-          className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+          className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white"
         >
           Edit details
         </button>
@@ -86,12 +82,6 @@ export default function JobDetailActions({
           Delete
         </button>
       </div>
-      {!isToday && (
-        <p className="text-xs text-black/50">
-          Field edits are limited to the day a job was entered. Cancel, refund, and delete work on
-          any day.
-        </p>
-      )}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {editing && <JobForm reportId={reportId} job={job} onClose={() => setEditing(false)} />}
     </div>

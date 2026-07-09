@@ -227,25 +227,21 @@ export default function JobsTable({
                   >
                     View
                   </Link>
-                  {isToday && (
-                    <>
-                      <button
-                        onClick={() => setEditingJob(j)}
-                        className="mr-2 text-black/60 hover:text-black hover:underline"
-                        type="button"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(j.id)}
-                        disabled={isPending}
-                        className="text-red-600 hover:underline disabled:opacity-50"
-                        type="button"
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
+                  <button
+                    onClick={() => setEditingJob(j)}
+                    className="mr-2 text-black/60 hover:text-black hover:underline"
+                    type="button"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(j.id)}
+                    disabled={isPending}
+                    className="text-red-600 hover:underline disabled:opacity-50"
+                    type="button"
+                  >
+                    Delete
+                  </button>
                 </td>
                 {COLUMNS.map((c) => (
                   <td key={c.key} className="whitespace-nowrap px-3 py-2">
