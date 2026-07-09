@@ -26,7 +26,7 @@ export default function AddTodayJobButton() {
       type="button"
       className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
     >
-      {isPending ? "Loading..." : "+ Add today's job"}
+      {isPending ? "Loading..." : "+ Add job"}
     </button>
   );
 }
