@@ -10,23 +10,32 @@ function formatRemaining(ms: number): string {
   return `${sign}${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 }
 
-export function useCountdown(deadline: number) {
+export function useCountdown(deadline: number | null) {
   // Start null so server render and initial client render match exactly
   // (Date.now() differs between the two, which would otherwise cause a
   // hydration mismatch); the real value is filled in after mount.
   const [now, setNow] = useState<number | null>(null);
 
   useEffect(() => {
+    if (deadline === null) return;
     setNow(Date.now());
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [deadline]);
 
-  return now === null ? null : deadline - now;
+  return deadline === null || now === null ? null : deadline - now;
 }
 
-export default function CountdownBadge({ deadline }: { deadline: number }) {
+export default function CountdownBadge({ deadline }: { deadline: number | null }) {
   const remaining = useCountdown(deadline);
+
+  if (deadline === null) {
+    return (
+      <span className="inline-block rounded-full bg-black/5 px-2 py-0.5 text-xs font-medium text-black/40">
+        No ETA
+      </span>
+    );
+  }
 
   if (remaining === null) {
     return (

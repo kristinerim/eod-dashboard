@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { summarizeJobs, todayISO, weekRangeFor, type JobSummaryInput } from "@/lib/aggregate";
+import {
+  isOpenJobStatus,
+  summarizeJobs,
+  todayISO,
+  weekRangeFor,
+  type JobSummaryInput,
+} from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import DispatchedList, { type DispatchedJob } from "@/components/DispatchedList";
 import AddTodayJobButton from "./AddTodayJobButton";
@@ -87,20 +93,20 @@ export default async function DashboardPage() {
   const weekJobs = weekReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
   const weekSummary = summarizeJobs(weekJobs);
 
-  const todaysReport = reports.find((r) => r.report_date === today);
-  let dispatchedJobs: DispatchedJob[] = [];
-  if (todaysReport) {
-    const { data } = await supabase
-      .from("jobs")
-      .select(
-        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, dispatched_at, eta_minutes"
-      )
-      .eq("report_id", todaysReport.id)
-      .ilike("job_status", "dispatched")
-      .not("dispatched_at", "is", null)
-      .not("eta_minutes", "is", null);
-    dispatchedJobs = (data ?? []) as DispatchedJob[];
-  }
+  const { data: dispatchedData } = await supabase
+    .from("jobs")
+    .select(
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, dispatched_at, eta_minutes"
+    )
+    .in(
+      "report_id",
+      reports.map((r) => r.id)
+    )
+    .not("dispatched_at", "is", null)
+    .not("eta_minutes", "is", null);
+  const dispatchedJobs: DispatchedJob[] = ((dispatchedData ?? []) as DispatchedJob[]).filter((j) =>
+    isOpenJobStatus(j.job_status)
+  );
 
   return (
     <div className="space-y-8">

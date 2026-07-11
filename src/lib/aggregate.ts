@@ -19,6 +19,12 @@ function isCancelled(status: string | null): boolean {
   return status?.trim().toLowerCase() === "cancelled";
 }
 
+/** A job stays "open" (still needs tracking) until it's Completed or Cancelled. */
+export function isOpenJobStatus(status: string | null): boolean {
+  const s = status?.trim().toLowerCase();
+  return s !== "completed" && s !== "cancelled";
+}
+
 export function summarizeJobs(jobs: JobSummaryInput[]): JobSummary {
   let totalProfit = 0;
   let totalJobAmount = 0;

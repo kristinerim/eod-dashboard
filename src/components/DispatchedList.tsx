@@ -13,6 +13,7 @@ export interface DispatchedJob {
   vendor_name: string | null;
   state: string | null;
   customer_phone: string | null;
+  job_status: string | null;
   dispatched_at: string;
   eta_minutes: number;
 }
