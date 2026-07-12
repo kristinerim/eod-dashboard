@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/profile";
 import CreateAgentForm from "./CreateAgentForm";
@@ -40,8 +41,12 @@ export default async function AgentsPage() {
             </thead>
             <tbody>
               {(agents ?? []).map((a) => (
-                <tr key={a.id} className="border-t border-black/10">
-                  <td className="px-4 py-2">{a.agent_name ?? "-"}</td>
+                <tr key={a.id} className="border-t border-black/10 hover:bg-black/[0.03]">
+                  <td className="px-4 py-2">
+                    <Link href={`/agents/${a.id}`} className="underline">
+                      {a.agent_name ?? "-"}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2">{a.email ?? "-"}</td>
                 </tr>
               ))}

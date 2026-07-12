@@ -25,6 +25,20 @@ export function isOpenJobStatus(status: string | null): boolean {
   return s !== "completed" && s !== "cancelled";
 }
 
+export function isCompletedStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "completed";
+}
+
+export function isDispatchedStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "dispatched";
+}
+
+/** Jobs an agent is currently working: dispatched, in progress, or on hold. */
+export function isActiveJobStatus(status: string | null): boolean {
+  const s = status?.trim().toLowerCase();
+  return s === "dispatched" || s === "in progress" || s === "on hold";
+}
+
 export function summarizeJobs(jobs: JobSummaryInput[]): JobSummary {
   let totalProfit = 0;
   let totalJobAmount = 0;
@@ -85,4 +99,13 @@ export function weekRangeFor(dateISO: string): { start: string; end: string } {
   const end = new Date(start);
   end.setUTCDate(start.getUTCDate() + 6);
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+/** Calendar month containing the given ISO date. */
+export function monthRangeFor(dateISO: string): { start: string; end: string } {
+  const [year, month] = dateISO.split("-").map(Number);
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  return { start, end };
 }

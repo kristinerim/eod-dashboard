@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   isOpenJobStatus,
+  monthRangeFor,
   summarizeJobs,
   todayISO,
   weekRangeFor,
@@ -93,6 +94,19 @@ export default async function DashboardPage() {
   const weekJobs = weekReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
   const weekSummary = summarizeJobs(weekJobs);
 
+  const todayReportIds = reports.filter((r) => r.report_date === today).map((r) => r.id);
+  const todayJobs = todayReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
+
+  const { start: monthStart, end: monthEnd } = monthRangeFor(today);
+  const monthReportIds = reports
+    .filter((r) => r.report_date >= monthStart && r.report_date <= monthEnd)
+    .map((r) => r.id);
+  const monthJobs = monthReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
+
+  const incompleteToday = todayJobs.filter((j) => isOpenJobStatus(j.job_status)).length;
+  const incompleteWeek = weekJobs.filter((j) => isOpenJobStatus(j.job_status)).length;
+  const incompleteMonth = monthJobs.filter((j) => isOpenJobStatus(j.job_status)).length;
+
   const { data: dispatchedData } = await supabase
     .from("jobs")
     .select(
@@ -124,6 +138,15 @@ export default async function DashboardPage() {
         <Card label="Jobs" value={weekSummary.jobCount} />
         <Card label="Job amount" value={formatCurrency(weekSummary.totalJobAmount)} />
         <Card label="Vendor payment" value={formatCurrency(weekSummary.totalVendorFee)} />
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold">Incomplete jobs</h2>
+        <div className="grid grid-cols-3 gap-3">
+          <Card label="Today" value={incompleteToday} />
+          <Card label="This week" value={incompleteWeek} />
+          <Card label="This month" value={incompleteMonth} />
+        </div>
       </div>
 
       {dispatchedJobs.length > 0 && (

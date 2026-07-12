@@ -6,7 +6,14 @@ import { TEAM_MEMBERS, US_STATE_CODES, PLATFORMS } from "@/lib/constants";
 import { createJob, updateJob } from "./job-actions";
 import type { Job } from "./JobsTable";
 
-const JOB_STATUS_SUGGESTIONS = ["Appointment", "Dispatched", "Completed", "Cancelled"];
+const JOB_STATUS_SUGGESTIONS = [
+  "Appointment",
+  "Dispatched",
+  "In Progress",
+  "On Hold",
+  "Completed",
+  "Cancelled",
+];
 
 interface Props {
   reportId: string;
