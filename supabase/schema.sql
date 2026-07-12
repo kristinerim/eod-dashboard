@@ -180,3 +180,106 @@ alter policy "authenticated can delete same-day jobs" on jobs
 
 -- Capture why a job was cancelled.
 alter table jobs add column if not exists cancellation_reason text;
+
+-- Roles: agents (field workers, new logins) vs managers (existing dispatcher
+-- accounts). Backfill sets every account that exists before this migration
+-- to manager; anyone created afterward defaults to agent.
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  role text not null default 'agent' check (role in ('agent', 'manager')),
+  agent_name text,
+  created_at timestamptz not null default now()
+);
+
+alter table profiles enable row level security;
+
+create or replace function is_manager() returns boolean
+language sql security definer stable
+set search_path = public
+as $$
+  select exists (select 1 from profiles where id = auth.uid() and role = 'manager');
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'profiles' and policyname = 'users read own profile or managers read all'
+  ) then
+    create policy "users read own profile or managers read all" on profiles
+      for select to authenticated using (id = auth.uid() or is_manager());
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'profiles' and policyname = 'managers insert profiles'
+  ) then
+    create policy "managers insert profiles" on profiles
+      for insert to authenticated with check (is_manager());
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'profiles' and policyname = 'managers update profiles'
+  ) then
+    create policy "managers update profiles" on profiles
+      for update to authenticated using (is_manager()) with check (is_manager());
+  end if;
+end $$;
+
+-- Backfill: every account that already exists is a manager (dispatcher team).
+insert into profiles (id, role)
+select id, 'manager' from auth.users
+on conflict (id) do nothing;
+
+-- Only managers can delete jobs; adding/editing stays open to agents too.
+alter policy "authenticated can delete same-day jobs" on jobs
+  using (is_manager());
+
+alter policy "authenticated can delete upload-sourced jobs" on jobs
+  using (is_manager());
+
+-- Clock in/out hour tracking.
+create table if not exists time_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  clock_in timestamptz not null default now(),
+  clock_out timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table time_entries enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'time_entries' and policyname = 'users read own entries or managers read all'
+  ) then
+    create policy "users read own entries or managers read all" on time_entries
+      for select to authenticated using (user_id = auth.uid() or is_manager());
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'time_entries' and policyname = 'users insert own entries'
+  ) then
+    create policy "users insert own entries" on time_entries
+      for insert to authenticated with check (user_id = auth.uid());
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'time_entries' and policyname = 'users update own entries'
+  ) then
+    create policy "users update own entries" on time_entries
+      for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'time_entries'
+  ) then
+    alter publication supabase_realtime add table time_entries;
+  end if;
+end $$;
+
+-- Store email on profiles for display (avoids needing an admin API call
+-- just to list agents on the manager-only /agents page).
+alter table profiles add column if not exists email text;

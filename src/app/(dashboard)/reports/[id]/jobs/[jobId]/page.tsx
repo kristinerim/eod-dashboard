@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/profile";
 import type { Job } from "../../JobsTable";
 import JobDetailActions from "./JobDetailActions";
 
@@ -47,6 +48,9 @@ export default async function JobDetailPage({
     .single();
 
   if (!job) notFound();
+
+  const profile = await getCurrentProfile();
+  const canDelete = profile?.role === "manager";
 
   const sections: { title: string; fields: { label: string; value: React.ReactNode }[] }[] = [
     {
@@ -115,7 +119,7 @@ export default async function JobDetailPage({
         </span>
       </div>
 
-      <JobDetailActions job={job as Job} reportId={id} />
+      <JobDetailActions job={job as Job} reportId={id} canDelete={canDelete} />
 
       {sections.map((section) => (
         <div key={section.title}>

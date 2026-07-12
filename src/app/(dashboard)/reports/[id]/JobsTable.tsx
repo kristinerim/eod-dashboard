@@ -83,10 +83,12 @@ export default function JobsTable({
   jobs,
   reportId,
   isToday = false,
+  canDelete = false,
 }: {
   jobs: Job[];
   reportId: string;
   isToday?: boolean;
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -236,14 +238,16 @@ export default function JobsTable({
                   >
                     Edit
                   </button>
-                  <button
-                    onClick={() => handleDelete(j.id)}
-                    disabled={isPending}
-                    className="text-red-600 hover:underline disabled:opacity-50"
-                    type="button"
-                  >
-                    Delete
-                  </button>
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(j.id)}
+                      disabled={isPending}
+                      className="text-red-600 hover:underline disabled:opacity-50"
+                      type="button"
+                    >
+                      Delete
+                    </button>
+                  )}
                 </td>
                 {COLUMNS.map((c) => (
                   <td key={c.key} className="whitespace-nowrap px-3 py-2">

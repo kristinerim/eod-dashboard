@@ -68,7 +68,12 @@ const PHT_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 /** Today's date in Philippine Time (UTC+8, no DST), matching the team's working day. */
 export function todayISO() {
-  return new Date(Date.now() + PHT_OFFSET_MS).toISOString().slice(0, 10);
+  return dateInPHT(new Date().toISOString());
+}
+
+/** The Philippine-Time calendar date (UTC+8, no DST) a given instant falls on. */
+export function dateInPHT(isoInstant: string): string {
+  return new Date(new Date(isoInstant).getTime() + PHT_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 /** Sunday-Saturday week containing the given ISO date. */

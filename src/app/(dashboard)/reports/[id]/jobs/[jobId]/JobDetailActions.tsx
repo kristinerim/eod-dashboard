@@ -9,9 +9,11 @@ import { cancelJob, refundJob, deleteJobAnyDay } from "./actions";
 export default function JobDetailActions({
   job,
   reportId,
+  canDelete,
 }: {
   job: Job;
   reportId: string;
+  canDelete: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -76,13 +78,15 @@ export default function JobDetailActions({
         >
           Refund
         </button>
-        <button
-          onClick={handleDelete}
-          disabled={isPending}
-          className="rounded border border-red-300 px-4 py-1.5 text-sm text-red-600 disabled:opacity-50"
-        >
-          Delete
-        </button>
+        {canDelete && (
+          <button
+            onClick={handleDelete}
+            disabled={isPending}
+            className="rounded border border-red-300 px-4 py-1.5 text-sm text-red-600 disabled:opacity-50"
+          >
+            Delete
+          </button>
+        )}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {editing && <JobForm reportId={reportId} job={job} onClose={() => setEditing(false)} />}
