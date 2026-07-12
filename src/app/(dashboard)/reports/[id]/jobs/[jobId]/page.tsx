@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, getAgentNameOptions } from "@/lib/profile";
+import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/profile";
 import type { Job } from "../../JobsTable";
 import JobDetailActions from "./JobDetailActions";
 
@@ -50,7 +50,7 @@ export default async function JobDetailPage({
   if (!job) notFound();
 
   const profile = await getCurrentProfile();
-  const canDelete = profile?.role === "manager";
+  const canDelete = isSupervisor(profile?.role);
   const agentOptions = await getAgentNameOptions();
 
   const sections: { title: string; fields: { label: string; value: React.ReactNode }[] }[] = [
@@ -125,6 +125,8 @@ export default async function JobDetailPage({
         reportId={id}
         canDelete={canDelete}
         agentOptions={agentOptions}
+        currentRole={profile?.role}
+        currentAgentName={profile?.agent_name}
       />
 
       {sections.map((section) => (

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/aggregate";
+import { getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profile";
 
 function numberOrNull(v: FormDataEntryValue | null): number | null {
   if (v === null || v === "") return null;
@@ -70,12 +71,22 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." };
 
+  const fields = jobFieldsFromForm(formData);
+
+  const profile = await getCurrentProfile();
+  if (!isSupervisor(profile?.role)) {
+    if (!profile?.agent_name) {
+      return { error: "Your account isn't linked to an agent name — ask an admin to fix your profile." };
+    }
+    if (fields.agent !== profile.agent_name) {
+      return { error: "You can only create jobs under your own name." };
+    }
+  }
+
   const { count } = await supabase
     .from("jobs")
     .select("id", { count: "exact", head: true })
     .eq("report_id", reportId);
-
-  const fields = jobFieldsFromForm(formData);
 
   const { error } = await supabase.from("jobs").insert({
     ...fields,
@@ -97,6 +108,7 @@ type JobContext =
       ok: true;
       supabase: Awaited<ReturnType<typeof createClient>>;
       reportId: string;
+      currentAgent: string | null;
       currentStatus: string | null;
       currentDispatchedAt: string | null;
     }
@@ -111,7 +123,7 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
 
   const { data: existing, error } = await supabase
     .from("jobs")
-    .select("report_id, job_status, dispatched_at")
+    .select("report_id, agent, job_status, dispatched_at")
     .eq("id", jobId)
     .single();
 
@@ -121,6 +133,7 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
     ok: true,
     supabase,
     reportId: existing.report_id as string,
+    currentAgent: existing.agent,
     currentStatus: existing.job_status,
     currentDispatchedAt: existing.dispatched_at,
   };
@@ -129,9 +142,23 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
 export async function updateJob(jobId: string, formData: FormData): Promise<ActionResult> {
   const check = await requireJobContext(jobId);
   if (!check.ok) return { error: check.error };
-  const { supabase, reportId, currentStatus, currentDispatchedAt } = check;
+  const { supabase, reportId, currentAgent, currentStatus, currentDispatchedAt } = check;
 
   const fields = jobFieldsFromForm(formData);
+
+  const profile = await getCurrentProfile();
+  if (!isSupervisor(profile?.role)) {
+    if (!profile?.agent_name) {
+      return { error: "Your account isn't linked to an agent name — ask an admin to fix your profile." };
+    }
+    if (currentAgent !== profile.agent_name) {
+      return { error: "You can only edit jobs assigned to you." };
+    }
+    if (fields.agent !== profile.agent_name) {
+      return { error: "You can only assign jobs to yourself." };
+    }
+  }
+
   const dispatched_at = isDispatchedStatus(fields.job_status)
     ? isDispatchedStatus(currentStatus) && currentDispatchedAt
       ? currentDispatchedAt
@@ -150,6 +177,9 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
 }
 
 export async function deleteJob(jobId: string): Promise<ActionResult> {
+  const supervisorCheck = await requireSupervisor();
+  if (!supervisorCheck.ok) return { error: supervisorCheck.error };
+
   const check = await requireJobContext(jobId);
   if (!check.ok) return { error: check.error };
   const { supabase, reportId } = check;

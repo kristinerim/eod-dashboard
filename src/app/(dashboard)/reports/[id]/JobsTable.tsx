@@ -85,13 +85,19 @@ export default function JobsTable({
   isToday = false,
   canDelete = false,
   agentOptions,
+  currentRole,
+  currentAgentName,
 }: {
   jobs: Job[];
   reportId: string;
   isToday?: boolean;
   canDelete?: boolean;
   agentOptions?: string[];
+  currentRole?: string;
+  currentAgentName?: string | null;
 }) {
+  const canEditJob = (job: Job) =>
+    currentRole !== "agent" || job.agent === currentAgentName;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [search, setSearch] = useState("");
@@ -233,13 +239,15 @@ export default function JobsTable({
                   >
                     View
                   </Link>
-                  <button
-                    onClick={() => setEditingJob(j)}
-                    className="mr-2 text-black/60 hover:text-black hover:underline"
-                    type="button"
-                  >
-                    Edit
-                  </button>
+                  {canEditJob(j) && (
+                    <button
+                      onClick={() => setEditingJob(j)}
+                      className="mr-2 text-black/60 hover:text-black hover:underline"
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                  )}
                   {canDelete && (
                     <button
                       onClick={() => handleDelete(j.id)}
@@ -265,7 +273,13 @@ export default function JobsTable({
       </div>
 
       {addingJob && (
-        <JobForm reportId={reportId} onClose={() => setAddingJob(false)} agentOptions={agentOptions} />
+        <JobForm
+          reportId={reportId}
+          onClose={() => setAddingJob(false)}
+          agentOptions={agentOptions}
+          currentRole={currentRole}
+          currentAgentName={currentAgentName}
+        />
       )}
       {editingJob && (
         <JobForm
@@ -273,6 +287,8 @@ export default function JobsTable({
           job={editingJob}
           onClose={() => setEditingJob(null)}
           agentOptions={agentOptions}
+          currentRole={currentRole}
+          currentAgentName={currentAgentName}
         />
       )}
     </div>

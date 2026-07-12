@@ -101,3 +101,10 @@ export const PLATFORMS = [
   "DIGITAS",
   "TAILOREDPAY",
 ];
+
+export const ROLE_LABELS: Record<string, string> = {
+  operations_manager: "Operations Manager",
+  admin_coordinator: "Admin Coordinator",
+  team_leader: "Team Leader",
+  agent: "Agent",
+};

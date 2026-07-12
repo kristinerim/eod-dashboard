@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile } from "@/lib/profile";
+import { getCurrentProfile, isSupervisor } from "@/lib/profile";
 import {
   dateInPHT,
   isActiveJobStatus,
@@ -57,8 +57,8 @@ function hoursBetween(entries: TimeEntry[], start: string, end: string) {
 
 export default async function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const currentProfile = await getCurrentProfile();
-  if (currentProfile?.role !== "manager") {
-    return <p className="text-sm text-black/70">Only managers can view agent details.</p>;
+  if (!isSupervisor(currentProfile?.role)) {
+    return <p className="text-sm text-black/70">Only supervisors can view agent details.</p>;
   }
 
   const { id } = await params;

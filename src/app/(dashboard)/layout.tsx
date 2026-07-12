@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile } from "@/lib/profile";
+import { getCurrentProfile, isFullAdmin } from "@/lib/profile";
 import { signOut } from "./actions";
 
 export default async function DashboardLayout({
@@ -33,9 +33,9 @@ export default async function DashboardLayout({
           <Link href="/upload" className="text-black/70 hover:text-black">
             Upload report
           </Link>
-          {profile?.role === "manager" && (
+          {isFullAdmin(profile?.role) && (
             <Link href="/agents" className="text-black/70 hover:text-black">
-              Agents
+              Users
             </Link>
           )}
           <span className="text-black/40">{user?.email}</span>

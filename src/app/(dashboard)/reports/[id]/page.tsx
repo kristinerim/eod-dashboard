@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import JobsTable, { type Job } from "./JobsTable";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import { summarizeJobs, todayISO } from "@/lib/aggregate";
-import { getCurrentProfile, getAgentNameOptions } from "@/lib/profile";
+import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/profile";
 
 function formatCurrency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -44,7 +44,7 @@ export default async function ReportDetailPage({
   const summary = summarizeJobs(jobList);
   const isToday = report.report_date === todayISO();
   const profile = await getCurrentProfile();
-  const canDelete = profile?.role === "manager";
+  const canDelete = isSupervisor(profile?.role);
   const agentOptions = await getAgentNameOptions();
 
   const cards = [
@@ -132,6 +132,8 @@ export default async function ReportDetailPage({
           isToday={isToday}
           canDelete={canDelete}
           agentOptions={agentOptions}
+          currentRole={profile?.role}
+          currentAgentName={profile?.agent_name}
         />
       </div>
     </div>

@@ -11,16 +11,21 @@ export default function JobDetailActions({
   reportId,
   canDelete,
   agentOptions,
+  currentRole,
+  currentAgentName,
 }: {
   job: Job;
   reportId: string;
   canDelete: boolean;
   agentOptions?: string[];
+  currentRole?: string;
+  currentAgentName?: string | null;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canEdit = currentRole !== "agent" || job.agent === currentAgentName;
 
   function handleCancel() {
     const reason = prompt("Why is this job being cancelled?", job.cancellation_reason ?? "");
@@ -60,12 +65,14 @@ export default function JobDetailActions({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setEditing(true)}
-          className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white"
-        >
-          Edit details
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setEditing(true)}
+            className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white"
+          >
+            Edit details
+          </button>
+        )}
         <button
           onClick={handleCancel}
           disabled={isPending}
@@ -97,6 +104,8 @@ export default function JobDetailActions({
           job={job}
           onClose={() => setEditing(false)}
           agentOptions={agentOptions}
+          currentRole={currentRole}
+          currentAgentName={currentAgentName}
         />
       )}
     </div>

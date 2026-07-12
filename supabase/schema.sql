@@ -283,3 +283,121 @@ end $$;
 -- Store email on profiles for display (avoids needing an admin API call
 -- just to list agents on the manager-only /agents page).
 alter table profiles add column if not exists email text;
+
+-- Four-role system: Operations Manager / Admin Coordinator / Team Leader /
+-- Agent, replacing the binary agent/manager role. Existing 'manager'
+-- accounts become 'operations_manager' (reassignable later from /agents).
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'profiles_role_check') then
+    alter table profiles drop constraint profiles_role_check;
+  end if;
+end $$;
+
+update profiles set role = 'operations_manager' where role = 'manager';
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'profiles_role_check') then
+    alter table profiles add constraint profiles_role_check
+      check (role in ('operations_manager', 'admin_coordinator', 'team_leader', 'agent'));
+  end if;
+end $$;
+
+-- Full user management: create/edit/deactivate/delete accounts, assign roles.
+create or replace function is_full_admin() returns boolean
+language sql security definer stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from profiles
+    where id = auth.uid() and role in ('operations_manager', 'admin_coordinator')
+  );
+$$;
+
+-- Job CRUD on any job, view-all dashboards/hours, read-all profiles.
+-- Superset of is_full_admin (Team Leaders qualify here but not there).
+create or replace function is_supervisor() returns boolean
+language sql security definer stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from profiles
+    where id = auth.uid()
+      and role in ('operations_manager', 'admin_coordinator', 'team_leader')
+  );
+$$;
+
+-- The caller's own agent_name, used to restrict Agents to their own jobs.
+create or replace function current_agent_name() returns text
+language sql security definer stable
+set search_path = public
+as $$
+  select agent_name from profiles where id = auth.uid();
+$$;
+
+-- profiles: read-all / write narrows from "managers" to "full admins".
+alter policy "users read own profile or managers read all" on profiles
+  using (id = auth.uid() or is_full_admin());
+
+alter policy "managers insert profiles" on profiles
+  with check (is_full_admin());
+
+alter policy "managers update profiles" on profiles
+  using (is_full_admin()) with check (is_full_admin());
+
+-- jobs: insert/update widen from "anyone" to "supervisors, or agents
+-- writing only their own name" (using guards the pre-image, with check
+-- guards the post-image, so an agent can't reassign a job away either).
+alter policy "authenticated can insert jobs" on jobs
+  with check (is_supervisor() or agent = current_agent_name());
+
+alter policy "authenticated can update same-day jobs" on jobs
+  using (is_supervisor() or agent = current_agent_name())
+  with check (is_supervisor() or agent = current_agent_name());
+
+-- jobs: delete widens from "managers only" to "supervisors" (Team Leaders
+-- gain delete; Agents still can't).
+alter policy "authenticated can delete same-day jobs" on jobs
+  using (is_supervisor());
+
+alter policy "authenticated can delete upload-sourced jobs" on jobs
+  using (is_supervisor());
+
+-- time_entries: "all agents" visibility widens from managers-only to
+-- supervisors (Team Leaders can now review everyone's hours).
+alter policy "users read own entries or managers read all" on time_entries
+  using (user_id = auth.uid() or is_supervisor());
+
+-- Data-integrity fix required so deleteUserAccount can work: jobs.created_by
+-- and reports.uploaded_by are FKs to auth.users with no ON DELETE action,
+-- so admin.auth.admin.deleteUser() would fail for any user who ever
+-- created a job or uploaded a report. Null the attribution instead of
+-- blocking the delete; job/report data itself is untouched.
+do $$
+declare
+  fk_name text;
+begin
+  select conname into fk_name
+  from pg_constraint
+  where conrelid = 'jobs'::regclass and contype = 'f' and confrelid = 'auth.users'::regclass;
+  if fk_name is not null then
+    execute format('alter table jobs drop constraint %I', fk_name);
+  end if;
+  alter table jobs add constraint jobs_created_by_fkey
+    foreign key (created_by) references auth.users(id) on delete set null;
+end $$;
+
+do $$
+declare
+  fk_name text;
+begin
+  select conname into fk_name
+  from pg_constraint
+  where conrelid = 'reports'::regclass and contype = 'f' and confrelid = 'auth.users'::regclass;
+  if fk_name is not null then
+    execute format('alter table reports drop constraint %I', fk_name);
+  end if;
+  alter table reports add constraint reports_uploaded_by_fkey
+    foreign key (uploaded_by) references auth.users(id) on delete set null;
+end $$;

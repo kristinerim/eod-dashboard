@@ -20,10 +20,20 @@ interface Props {
   job?: Job;
   onClose: () => void;
   agentOptions?: string[];
+  currentRole?: string;
+  currentAgentName?: string | null;
 }
 
-export default function JobForm({ reportId, job, onClose, agentOptions }: Props) {
+export default function JobForm({
+  reportId,
+  job,
+  onClose,
+  agentOptions,
+  currentRole,
+  currentAgentName,
+}: Props) {
   const agentNames = agentOptions ?? TEAM_MEMBERS;
+  const isLockedToSelf = currentRole === "agent";
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -65,21 +75,30 @@ export default function JobForm({ reportId, job, onClose, agentOptions }: Props)
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Agent">
-              <select
-                name="agent"
-                defaultValue={job?.agent ?? ""}
-                required
-                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-              >
-                <option value="" disabled>
-                  Select agent
-                </option>
-                {agentNames.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
+              {isLockedToSelf ? (
+                <>
+                  <div className="flex h-[34px] items-center rounded border border-black/10 bg-black/5 px-2 text-sm">
+                    {currentAgentName ?? "-"}
+                  </div>
+                  <input type="hidden" name="agent" value={currentAgentName ?? ""} />
+                </>
+              ) : (
+                <select
+                  name="agent"
+                  defaultValue={job?.agent ?? ""}
+                  required
+                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                >
+                  <option value="" disabled>
+                    Select agent
                   </option>
-                ))}
-              </select>
+                  {agentNames.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
 
             <Field label="Dispatcher">

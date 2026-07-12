@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile } from "@/lib/profile";
+import { getCurrentProfile, isSupervisor } from "@/lib/profile";
 import { dateInPHT, todayISO, weekRangeFor } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import ClockWidget from "./ClockWidget";
@@ -70,7 +70,7 @@ export default async function HoursPage() {
   const grouped = groupByDate(entries);
 
   let allSection = null;
-  if (profile?.role === "manager") {
+  if (isSupervisor(profile?.role)) {
     const { data: allEntries } = await supabase
       .from("time_entries")
       .select("id, user_id, clock_in, clock_out")

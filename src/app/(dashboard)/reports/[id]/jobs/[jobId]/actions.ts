@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireManager } from "@/lib/profile";
+import { requireSupervisor } from "@/lib/profile";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -72,7 +72,7 @@ export async function refundJob(
 }
 
 export async function deleteJobAnyDay(jobId: string, reportId: string): Promise<ActionResult> {
-  const check = await requireManager();
+  const check = await requireSupervisor();
   if (!check.ok) return { error: check.error };
 
   const admin = createAdminClient();
