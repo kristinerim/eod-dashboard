@@ -84,11 +84,13 @@ export default function JobsTable({
   reportId,
   isToday = false,
   canDelete = false,
+  agentOptions,
 }: {
   jobs: Job[];
   reportId: string;
   isToday?: boolean;
   canDelete?: boolean;
+  agentOptions?: string[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -262,9 +264,16 @@ export default function JobsTable({
         </table>
       </div>
 
-      {addingJob && <JobForm reportId={reportId} onClose={() => setAddingJob(false)} />}
+      {addingJob && (
+        <JobForm reportId={reportId} onClose={() => setAddingJob(false)} agentOptions={agentOptions} />
+      )}
       {editingJob && (
-        <JobForm reportId={reportId} job={editingJob} onClose={() => setEditingJob(null)} />
+        <JobForm
+          reportId={reportId}
+          job={editingJob}
+          onClose={() => setEditingJob(null)}
+          agentOptions={agentOptions}
+        />
       )}
     </div>
   );

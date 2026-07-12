@@ -27,7 +27,9 @@ export default async function AgentsPage() {
         </p>
       </div>
 
-      <CreateAgentForm />
+      <CreateAgentForm
+        existingAgentNames={(agents ?? []).map((a) => a.agent_name).filter((n): n is string => !!n)}
+      />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Existing agents ({agents?.length ?? 0})</h2>

@@ -10,10 +10,12 @@ export default function JobDetailActions({
   job,
   reportId,
   canDelete,
+  agentOptions,
 }: {
   job: Job;
   reportId: string;
   canDelete: boolean;
+  agentOptions?: string[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -89,7 +91,14 @@ export default function JobDetailActions({
         )}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {editing && <JobForm reportId={reportId} job={job} onClose={() => setEditing(false)} />}
+      {editing && (
+        <JobForm
+          reportId={reportId}
+          job={job}
+          onClose={() => setEditing(false)}
+          agentOptions={agentOptions}
+        />
+      )}
     </div>
   );
 }

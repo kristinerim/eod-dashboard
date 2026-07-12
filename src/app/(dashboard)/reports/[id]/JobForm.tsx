@@ -19,9 +19,11 @@ interface Props {
   reportId: string;
   job?: Job;
   onClose: () => void;
+  agentOptions?: string[];
 }
 
-export default function JobForm({ reportId, job, onClose }: Props) {
+export default function JobForm({ reportId, job, onClose, agentOptions }: Props) {
+  const agentNames = agentOptions ?? TEAM_MEMBERS;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +74,7 @@ export default function JobForm({ reportId, job, onClose }: Props) {
                 <option value="" disabled>
                   Select agent
                 </option>
-                {TEAM_MEMBERS.map((n) => (
+                {agentNames.map((n) => (
                   <option key={n} value={n}>
                     {n}
                   </option>

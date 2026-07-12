@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { TEAM_MEMBERS } from "@/lib/constants";
 import { createAgent } from "./actions";
 
-export default function CreateAgentForm() {
+export default function CreateAgentForm({ existingAgentNames = [] }: { existingAgentNames?: string[] }) {
+  const nameSuggestions = Array.from(new Set([...TEAM_MEMBERS, ...existingAgentNames])).sort();
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState("");
@@ -76,22 +77,21 @@ export default function CreateAgentForm() {
         <label htmlFor="agent-name" className="text-sm font-medium">
           Agent name
         </label>
-        <select
+        <input
           id="agent-name"
+          list="agent-name-suggestions"
           required
+          placeholder="Type a name, or pick an existing one"
           value={agentName}
           onChange={(e) => setAgentName(e.target.value)}
           className="w-full rounded border border-black/20 px-3 py-1.5 text-sm"
-        >
-          <option value="" disabled>
-            Select name
-          </option>
-          {TEAM_MEMBERS.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
+        />
+        <datalist id="agent-name-suggestions">
+          {nameSuggestions.map((n) => (
+            <option key={n} value={n} />
           ))}
-        </select>
+        </datalist>
+        <p className="text-xs text-black/50">New hire? Just type their name — it doesn&apos;t need to be on the list.</p>
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
       <button

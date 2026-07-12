@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { TEAM_MEMBERS } from "@/lib/constants";
 
 export interface Profile {
   role: "agent" | "manager";
@@ -41,4 +42,14 @@ export async function requireManager(): Promise<
   }
 
   return { ok: true, userId: user.id };
+}
+
+/** The fixed team roster plus any agent accounts created later (new hires), deduped and sorted. */
+export async function getAgentNameOptions(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("profiles").select("agent_name").eq("role", "agent");
+  const dbNames = (data ?? [])
+    .map((p) => p.agent_name)
+    .filter((n): n is string => !!n);
+  return Array.from(new Set([...TEAM_MEMBERS, ...dbNames])).sort();
 }
