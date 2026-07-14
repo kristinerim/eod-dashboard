@@ -37,7 +37,7 @@ export default async function DashboardLayout({
             Dispatched
           </Link>
           <Link href="/pending-completion" className="text-black/70 hover:text-black">
-            Pending Completion
+            DPA
           </Link>
           <Link href="/weekly" className="text-black/70 hover:text-black">
             Weekly summaries
