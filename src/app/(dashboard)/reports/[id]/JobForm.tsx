@@ -170,6 +170,7 @@ export default function JobForm({
                 name="job_status"
                 list="job-status-suggestions"
                 defaultValue={job?.job_status ?? ""}
+                onFocus={(e) => e.target.select()}
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
               />
               <datalist id="job-status-suggestions">
