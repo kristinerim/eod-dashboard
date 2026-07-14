@@ -60,7 +60,7 @@ const COLUMNS: Column[] = [
   { key: "customer_phone", label: "Customer phone" },
   { key: "customer_charged_via", label: "Charged via" },
   { key: "vendor_paid_via", label: "Paid via" },
-  { key: "reviewed_by", label: "Reviewed by (ETA min)" },
+  { key: "reviewed_by", label: "Reviewed by" },
   { key: "dispatched_time", label: "Dispatched / appt notes" },
   { key: "notes", label: "Notes" },
 ];
