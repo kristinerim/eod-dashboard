@@ -11,7 +11,7 @@ const JOB_STATUS_SUGGESTIONS = [
   "Dispatched",
   "In Progress",
   "On Hold",
-  "Rendered – Pending Completion",
+  "Service Rendered – Pending Completion",
   "Completed",
   "Cancelled",
 ];

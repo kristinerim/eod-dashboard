@@ -21,6 +21,10 @@ function isDispatchedStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "dispatched";
 }
 
+function isPendingCompletionStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "service rendered – pending completion";
+}
+
 type ActionResult = { success: true; id?: string } | { error: string };
 
 export async function getOrCreateTodaysReport(): Promise<ActionResult> {
@@ -102,6 +106,9 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     source: "manual",
     created_by: user.id,
     dispatched_at: isDispatchedStatus(fields.job_status) ? new Date().toISOString() : null,
+    pending_completion_at: isPendingCompletionStatus(fields.job_status)
+      ? new Date().toISOString()
+      : null,
   });
 
   if (error) return { error: error.message };
@@ -118,6 +125,7 @@ type JobContext =
       currentAgent: string | null;
       currentStatus: string | null;
       currentDispatchedAt: string | null;
+      currentPendingCompletionAt: string | null;
     }
   | { ok: false; error: string };
 
@@ -130,7 +138,7 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
 
   const { data: existing, error } = await supabase
     .from("jobs")
-    .select("report_id, agent, job_status, dispatched_at")
+    .select("report_id, agent, job_status, dispatched_at, pending_completion_at")
     .eq("id", jobId)
     .single();
 
@@ -143,13 +151,21 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
     currentAgent: existing.agent,
     currentStatus: existing.job_status,
     currentDispatchedAt: existing.dispatched_at,
+    currentPendingCompletionAt: existing.pending_completion_at,
   };
 }
 
 export async function updateJob(jobId: string, formData: FormData): Promise<ActionResult> {
   const check = await requireJobContext(jobId);
   if (!check.ok) return { error: check.error };
-  const { supabase, reportId, currentAgent, currentStatus, currentDispatchedAt } = check;
+  const {
+    supabase,
+    reportId,
+    currentAgent,
+    currentStatus,
+    currentDispatchedAt,
+    currentPendingCompletionAt,
+  } = check;
 
   const fields = jobFieldsFromForm(formData);
 
@@ -172,9 +188,15 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
       : new Date().toISOString()
     : null;
 
+  const pending_completion_at = isPendingCompletionStatus(fields.job_status)
+    ? isPendingCompletionStatus(currentStatus) && currentPendingCompletionAt
+      ? currentPendingCompletionAt
+      : new Date().toISOString()
+    : null;
+
   const { error } = await supabase
     .from("jobs")
-    .update({ ...fields, dispatched_at })
+    .update({ ...fields, dispatched_at, pending_completion_at })
     .eq("id", jobId);
 
   if (error) return { error: error.message };

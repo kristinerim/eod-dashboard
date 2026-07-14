@@ -33,6 +33,10 @@ export function isDispatchedStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "dispatched";
 }
 
+export function isPendingCompletionStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "service rendered – pending completion";
+}
+
 /** Jobs an agent is currently working: dispatched, in progress, or on hold. */
 export function isActiveJobStatus(status: string | null): boolean {
   const s = status?.trim().toLowerCase();

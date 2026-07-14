@@ -401,3 +401,7 @@ begin
   alter table reports add constraint reports_uploaded_by_fkey
     foreign key (uploaded_by) references auth.users(id) on delete set null;
 end $$;
+
+-- Timestamp for the "Service Rendered – Pending Completion" status, set
+-- automatically when a job enters that status (mirrors dispatched_at).
+alter table jobs add column if not exists pending_completion_at timestamptz;
