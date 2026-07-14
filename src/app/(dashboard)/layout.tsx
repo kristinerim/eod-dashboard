@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, isFullAdmin } from "@/lib/profile";
+import ClockInPrompt from "@/components/ClockInPrompt";
 import { signOut } from "./actions";
 
 export default async function DashboardLayout({
@@ -13,6 +14,17 @@ export default async function DashboardLayout({
     data: { user },
   } = await supabase.auth.getUser();
   const profile = await getCurrentProfile();
+
+  let hasOpenEntry = true;
+  if (user) {
+    const { data: openEntry } = await supabase
+      .from("time_entries")
+      .select("id")
+      .eq("user_id", user.id)
+      .is("clock_out", null)
+      .maybeSingle();
+    hasOpenEntry = !!openEntry;
+  }
 
   return (
     <div className="flex flex-1 flex-col">
@@ -47,6 +59,7 @@ export default async function DashboardLayout({
         </div>
       </header>
       <main className="flex-1 px-6 py-6">{children}</main>
+      {user && <ClockInPrompt hasOpenEntry={hasOpenEntry} />}
     </div>
   );
 }
