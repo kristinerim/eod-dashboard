@@ -39,9 +39,10 @@ export default function JobForm({
   const [error, setError] = useState<string | null>(null);
   const [jobAmount, setJobAmount] = useState(job?.job_amount?.toString() ?? "");
   const [vendorsFee, setVendorsFee] = useState(job?.vendors_fee?.toString() ?? "");
+  const [refundedToClient, setRefundedToClient] = useState(job?.refunded_to_client?.toString() ?? "");
 
   const profitPreview =
-    (Number(jobAmount) || 0) - (Number(vendorsFee) || 0);
+    (Number(jobAmount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -253,6 +254,65 @@ export default function JobForm({
               className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
             />
           </Field>
+
+          {job && (
+            <div className="space-y-3 border-t border-black/10 pt-3">
+              <p className="text-xs font-medium text-black/50">
+                Follow-up fields (filled in after the job is entered)
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Refunded to client">
+                  <input
+                    name="refunded_to_client"
+                    type="number"
+                    step="0.01"
+                    value={refundedToClient}
+                    onChange={(e) => setRefundedToClient(e.target.value)}
+                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                  />
+                </Field>
+                <Field label="Last 4 of VPC">
+                  <input
+                    name="last4_vpc"
+                    defaultValue={job.last4_vpc ?? ""}
+                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Reviewed by">
+                  <input
+                    name="reviewed_by"
+                    defaultValue={job.reviewed_by ?? ""}
+                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                  />
+                </Field>
+                <Field label="Call que">
+                  <input
+                    name="call_que"
+                    defaultValue={job.call_que ?? ""}
+                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="WC (entered by Jon)">
+                  <input
+                    name="wc_entered_by_jon"
+                    defaultValue={job.wc_entered_by_jon ?? ""}
+                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                  />
+                </Field>
+                <Field label="Final checked by Zumi">
+                  <input
+                    name="final_checked_by_zumi"
+                    defaultValue={job.final_checked_by_zumi ?? ""}
+                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 

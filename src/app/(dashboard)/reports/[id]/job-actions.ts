@@ -44,7 +44,8 @@ export async function getOrCreateTodaysReport(): Promise<ActionResult> {
 function jobFieldsFromForm(formData: FormData) {
   const job_amount = numberOrNull(formData.get("job_amount"));
   const vendors_fee = numberOrNull(formData.get("vendors_fee"));
-  const profit = (job_amount ?? 0) - (vendors_fee ?? 0);
+  const refunded_to_client = numberOrNull(formData.get("refunded_to_client"));
+  const profit = (job_amount ?? 0) - (vendors_fee ?? 0) - (refunded_to_client ?? 0);
 
   return {
     agent: strOrNull(formData.get("agent")),
@@ -52,6 +53,7 @@ function jobFieldsFromForm(formData: FormData) {
     job_number: strOrNull(formData.get("job_number")),
     job_amount,
     vendors_fee,
+    refunded_to_client,
     profit,
     vendor_name: strOrNull(formData.get("vendor_name")),
     job_status: strOrNull(formData.get("job_status")),
@@ -61,6 +63,11 @@ function jobFieldsFromForm(formData: FormData) {
     customer_charged_via: strOrNull(formData.get("customer_charged_via")),
     vendor_paid_via: strOrNull(formData.get("vendor_paid_via")),
     notes: strOrNull(formData.get("notes")),
+    last4_vpc: strOrNull(formData.get("last4_vpc")),
+    reviewed_by: strOrNull(formData.get("reviewed_by")),
+    call_que: strOrNull(formData.get("call_que")),
+    wc_entered_by_jon: strOrNull(formData.get("wc_entered_by_jon")),
+    final_checked_by_zumi: strOrNull(formData.get("final_checked_by_zumi")),
   };
 }
 
