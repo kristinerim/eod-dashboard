@@ -8,6 +8,7 @@ import type { Job } from "./JobsTable";
 
 const JOB_STATUS_SUGGESTIONS = [
   "Appointment",
+  "Converted",
   "Dispatched",
   "In Progress",
   "On Hold",
