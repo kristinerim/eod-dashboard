@@ -82,6 +82,13 @@ export const TEAM_MEMBERS = [
   "Shierjon Donie Lagsac",
   "Steffie Ann Bawiga",
   "Zyrene Mae Jarlego",
+  "Adrian Lansang",
+  "Mikhael Jose Galocgoc",
+  "Emmanuel Briggs Adepoju",
+  "Cynthia Ngozi Ugochukwu",
+  "Paschal Chinaemelum Umeh",
+  "Justine Abel Bulawan",
+  "Fredrick Damian Chukwu",
 ].sort((a, b) => a.localeCompare(b));
 
 export const US_STATE_CODES = [
