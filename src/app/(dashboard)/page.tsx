@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
+  isDispatchedStatus,
   isOpenJobStatus,
   monthRangeFor,
   summarizeJobs,
@@ -119,7 +120,7 @@ export default async function DashboardPage() {
     .not("dispatched_at", "is", null)
     .not("eta_minutes", "is", null);
   const dispatchedJobs: DispatchedJob[] = ((dispatchedData ?? []) as DispatchedJob[]).filter((j) =>
-    isOpenJobStatus(j.job_status)
+    isDispatchedStatus(j.job_status)
   );
 
   return (

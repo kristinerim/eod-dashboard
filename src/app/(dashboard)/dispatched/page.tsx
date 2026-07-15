@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { isOpenJobStatus } from "@/lib/aggregate";
+import { isDispatchedStatus } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import DispatchedByDate, { type OpenJob } from "@/components/DispatchedByDate";
 
@@ -28,7 +28,7 @@ export default async function DispatchedPage() {
   const reportDateById = new Map(reports.map((r) => [r.id, r.report_date]));
 
   const openJobs: OpenJob[] = (jobs ?? [])
-    .filter((j) => isOpenJobStatus(j.job_status))
+    .filter((j) => isDispatchedStatus(j.job_status))
     .map((j) => ({ ...j, report_date: reportDateById.get(j.report_id)! }));
 
   return (
@@ -36,8 +36,8 @@ export default async function DispatchedPage() {
       <RealtimeRefresh tables={["jobs"]} />
       <h1 className="text-lg font-semibold">Dispatched jobs</h1>
       <p className="text-sm text-black/60">
-        Every job not yet marked Completed or Cancelled, grouped by day. Live countdown shown
-        where an ETA is set.
+        Every job currently in Dispatched status, grouped by day. Live countdown shown where an
+        ETA is set.
       </p>
       <DispatchedByDate jobs={openJobs} />
     </div>
