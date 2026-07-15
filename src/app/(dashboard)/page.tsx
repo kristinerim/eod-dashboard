@@ -164,25 +164,27 @@ export default async function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {reports.map((r) => {
-                const s = summarizeJobs(jobsByReport.get(r.id) ?? []);
-                return (
-                  <tr key={r.id} className="border-t border-black/10 hover:bg-black/[0.03]">
-                    <td className="px-4 py-2">
-                      <Link href={`/reports/${r.id}`} className="underline">
-                        {formatDate(r.report_date)}
-                      </Link>
-                      {r.report_date === today && (
-                        <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                          Today
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2">{formatCurrency(s.totalProfit)}</td>
-                    <td className="px-4 py-2">{s.jobCount}</td>
-                  </tr>
-                );
-              })}
+              {reports
+                .filter((r) => (jobsByReport.get(r.id) ?? []).length > 0)
+                .map((r) => {
+                  const s = summarizeJobs(jobsByReport.get(r.id) ?? []);
+                  return (
+                    <tr key={r.id} className="border-t border-black/10 hover:bg-black/[0.03]">
+                      <td className="px-4 py-2">
+                        <Link href={`/reports/${r.id}`} className="underline">
+                          {formatDate(r.report_date)}
+                        </Link>
+                        {r.report_date === today && (
+                          <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                            Today
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2">{formatCurrency(s.totalProfit)}</td>
+                      <td className="px-4 py-2">{s.jobCount}</td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
