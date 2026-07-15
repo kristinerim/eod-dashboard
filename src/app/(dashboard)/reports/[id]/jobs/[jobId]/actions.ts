@@ -20,6 +20,8 @@ function revalidateJob(reportId: string, jobId: string) {
   revalidatePath(`/reports/${reportId}/jobs/${jobId}`);
   revalidatePath("/");
   revalidatePath("/dispatched");
+  revalidatePath("/completed-jobs");
+  revalidatePath("/cancelled-jobs");
 }
 
 export async function cancelJob(
@@ -32,9 +34,20 @@ export async function cancelJob(
   if (!reason.trim()) return { error: "Enter a reason for the cancellation." };
 
   const admin = createAdminClient();
+  const { data: existing } = await admin
+    .from("jobs")
+    .select("job_status, cancelled_at")
+    .eq("id", jobId)
+    .single();
+
+  const alreadyCancelled = existing?.job_status?.trim().toLowerCase() === "cancelled";
+  const cancelled_at = alreadyCancelled && existing?.cancelled_at
+    ? existing.cancelled_at
+    : new Date().toISOString();
+
   const { error } = await admin
     .from("jobs")
-    .update({ job_status: "Cancelled", cancellation_reason: reason.trim() })
+    .update({ job_status: "Cancelled", cancellation_reason: reason.trim(), cancelled_at })
     .eq("id", jobId);
   if (error) return { error: error.message };
 

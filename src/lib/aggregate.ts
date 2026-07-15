@@ -15,7 +15,7 @@ export interface JobSummary {
   platformBreakdown: { platform: string; count: number; amount: number }[];
 }
 
-function isCancelled(status: string | null): boolean {
+export function isCancelledStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "cancelled";
 }
 
@@ -52,7 +52,7 @@ export function summarizeJobs(jobs: JobSummaryInput[]): JobSummary {
 
   for (const j of jobs) {
     // Cancelled jobs keep all their data but shouldn't inflate profit totals.
-    if (!isCancelled(j.job_status)) {
+    if (!isCancelledStatus(j.job_status)) {
       totalProfit += j.profit ?? 0;
     }
     totalJobAmount += j.job_amount ?? 0;

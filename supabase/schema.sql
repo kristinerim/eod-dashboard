@@ -405,3 +405,9 @@ end $$;
 -- Timestamp for the "Service Rendered – Pending Completion" status, set
 -- automatically when a job enters that status (mirrors dispatched_at).
 alter table jobs add column if not exists pending_completion_at timestamptz;
+
+-- Timestamps for the Completed Jobs / Cancelled Jobs pages, set automatically
+-- when a job's status changes to Completed or Cancelled (same pattern as
+-- dispatched_at / pending_completion_at above).
+alter table jobs add column if not exists completed_at timestamptz;
+alter table jobs add column if not exists cancelled_at timestamptz;

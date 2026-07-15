@@ -25,6 +25,14 @@ function isPendingCompletionStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "service rendered – pending completion";
 }
 
+function isCompletedJobStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "completed";
+}
+
+function isCancelledJobStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "cancelled";
+}
+
 type ActionResult = { success: true; id?: string } | { error: string };
 
 export async function getOrCreateTodaysReport(): Promise<ActionResult> {
@@ -109,6 +117,8 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     pending_completion_at: isPendingCompletionStatus(fields.job_status)
       ? new Date().toISOString()
       : null,
+    completed_at: isCompletedJobStatus(fields.job_status) ? new Date().toISOString() : null,
+    cancelled_at: isCancelledJobStatus(fields.job_status) ? new Date().toISOString() : null,
   });
 
   if (error) return { error: error.message };
@@ -126,6 +136,8 @@ type JobContext =
       currentStatus: string | null;
       currentDispatchedAt: string | null;
       currentPendingCompletionAt: string | null;
+      currentCompletedAt: string | null;
+      currentCancelledAt: string | null;
     }
   | { ok: false; error: string };
 
@@ -138,7 +150,9 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
 
   const { data: existing, error } = await supabase
     .from("jobs")
-    .select("report_id, agent, job_status, dispatched_at, pending_completion_at")
+    .select(
+      "report_id, agent, job_status, dispatched_at, pending_completion_at, completed_at, cancelled_at"
+    )
     .eq("id", jobId)
     .single();
 
@@ -152,6 +166,8 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
     currentStatus: existing.job_status,
     currentDispatchedAt: existing.dispatched_at,
     currentPendingCompletionAt: existing.pending_completion_at,
+    currentCompletedAt: existing.completed_at,
+    currentCancelledAt: existing.cancelled_at,
   };
 }
 
@@ -165,6 +181,8 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
     currentStatus,
     currentDispatchedAt,
     currentPendingCompletionAt,
+    currentCompletedAt,
+    currentCancelledAt,
   } = check;
 
   const fields = jobFieldsFromForm(formData);
@@ -194,9 +212,21 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
       : new Date().toISOString()
     : null;
 
+  const completed_at = isCompletedJobStatus(fields.job_status)
+    ? isCompletedJobStatus(currentStatus) && currentCompletedAt
+      ? currentCompletedAt
+      : new Date().toISOString()
+    : null;
+
+  const cancelled_at = isCancelledJobStatus(fields.job_status)
+    ? isCancelledJobStatus(currentStatus) && currentCancelledAt
+      ? currentCancelledAt
+      : new Date().toISOString()
+    : null;
+
   const { error } = await supabase
     .from("jobs")
-    .update({ ...fields, dispatched_at, pending_completion_at })
+    .update({ ...fields, dispatched_at, pending_completion_at, completed_at, cancelled_at })
     .eq("id", jobId);
 
   if (error) return { error: error.message };
