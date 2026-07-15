@@ -51,9 +51,6 @@ export default async function DashboardLayout({
           <Link href="/hours" className="text-black/70 hover:text-black">
             Hours
           </Link>
-          <Link href="/upload" className="text-black/70 hover:text-black">
-            Upload report
-          </Link>
           {isFullAdmin(profile?.role) && (
             <Link href="/agents" className="text-black/70 hover:text-black">
               Users

@@ -61,13 +61,7 @@ export default async function DashboardPage() {
     return (
       <div className="space-y-4">
         <AddTodayJobButton />
-        <p className="text-sm text-black/70">
-          No reports yet. Add today&apos;s first job above, or{" "}
-          <Link href="/upload" className="underline">
-            upload an EOD report
-          </Link>
-          .
-        </p>
+        <p className="text-sm text-black/70">No reports yet. Add today&apos;s first job above.</p>
       </div>
     );
   }
