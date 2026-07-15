@@ -26,13 +26,6 @@ function formatDate(d: string) {
   });
 }
 
-function formatShortDate(d: string) {
-  return new Date(`${d}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 interface JobRow extends JobSummaryInput {
   report_id: string;
 }
@@ -87,10 +80,10 @@ export default async function DashboardPage() {
     .filter((r) => r.report_date >= weekStart && r.report_date <= weekEnd)
     .map((r) => r.id);
   const weekJobs = weekReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
-  const weekSummary = summarizeJobs(weekJobs);
 
   const todayReportIds = reports.filter((r) => r.report_date === today).map((r) => r.id);
   const todayJobs = todayReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
+  const todaySummary = summarizeJobs(todayJobs);
 
   const { start: monthStart, end: monthEnd } = monthRangeFor(today);
   const monthReportIds = reports
@@ -122,17 +115,15 @@ export default async function DashboardPage() {
       <RealtimeRefresh tables={["jobs", "reports"]} />
 
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">
-          This week ({formatShortDate(weekStart)} – {formatShortDate(weekEnd)})
-        </h1>
+        <h1 className="text-lg font-semibold">Today — {formatDate(today)}</h1>
         <AddTodayJobButton />
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card label="Profit" value={formatCurrency(weekSummary.totalProfit)} />
-        <Card label="Jobs" value={weekSummary.jobCount} />
-        <Card label="Job amount" value={formatCurrency(weekSummary.totalJobAmount)} />
-        <Card label="Vendor payment" value={formatCurrency(weekSummary.totalVendorFee)} />
+        <Card label="Profit" value={formatCurrency(todaySummary.totalProfit)} />
+        <Card label="Jobs" value={todaySummary.jobCount} />
+        <Card label="Job amount" value={formatCurrency(todaySummary.totalJobAmount)} />
+        <Card label="Vendor payment" value={formatCurrency(todaySummary.totalVendorFee)} />
       </div>
 
       <div>
