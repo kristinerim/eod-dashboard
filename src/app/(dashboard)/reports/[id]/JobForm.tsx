@@ -166,18 +166,21 @@ export default function JobForm({
 
           <div className="grid grid-cols-3 gap-3">
             <Field label="Job status">
-              <input
+              <select
                 name="job_status"
-                list="job-status-suggestions"
                 defaultValue={job?.job_status ?? ""}
-                onFocus={(e) => e.target.select()}
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-              />
-              <datalist id="job-status-suggestions">
+              >
+                <option value="">-</option>
                 {JOB_STATUS_SUGGESTIONS.map((s) => (
-                  <option key={s} value={s} />
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
                 ))}
-              </datalist>
+                {job?.job_status && !JOB_STATUS_SUGGESTIONS.includes(job.job_status) && (
+                  <option value={job.job_status}>{job.job_status}</option>
+                )}
+              </select>
             </Field>
             <Field label="ETA (minutes)">
               <input
