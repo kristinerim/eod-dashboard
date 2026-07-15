@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/aggregate";
 import { getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profile";
+import { PENDING_COMPLETION_SUBSTATUSES } from "@/lib/constants";
 
 function numberOrNull(v: FormDataEntryValue | null): number | null {
   if (v === null || v === "") return null;
@@ -31,6 +32,20 @@ function isCompletedJobStatus(status: string | null): boolean {
 
 function isCancelledJobStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "cancelled";
+}
+
+function validatePendingCompletionSubstatus(
+  jobStatus: string | null,
+  substatus: string | null
+): string | null {
+  if (!isPendingCompletionStatus(jobStatus)) return null;
+  if (!substatus) {
+    return "Select a sub-status for Service Rendered – Pending Completion.";
+  }
+  if (!PENDING_COMPLETION_SUBSTATUSES.includes(substatus)) {
+    return "Select a valid sub-status.";
+  }
+  return null;
 }
 
 type ActionResult = { success: true; id?: string } | { error: string };
@@ -80,6 +95,7 @@ function jobFieldsFromForm(formData: FormData) {
     call_que: strOrNull(formData.get("call_que")),
     wc_entered_by_jon: strOrNull(formData.get("wc_entered_by_jon")),
     final_checked_by_zumi: strOrNull(formData.get("final_checked_by_zumi")),
+    pending_completion_substatus: strOrNull(formData.get("pending_completion_substatus")),
   };
 }
 
@@ -91,6 +107,12 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
   if (!user) return { error: "Not signed in." };
 
   const fields = jobFieldsFromForm(formData);
+
+  const substatusError = validatePendingCompletionSubstatus(
+    fields.job_status,
+    fields.pending_completion_substatus
+  );
+  if (substatusError) return { error: substatusError };
 
   const profile = await getCurrentProfile();
   if (!isSupervisor(profile?.role)) {
@@ -186,6 +208,12 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
   } = check;
 
   const fields = jobFieldsFromForm(formData);
+
+  const substatusError = validatePendingCompletionSubstatus(
+    fields.job_status,
+    fields.pending_completion_substatus
+  );
+  if (substatusError) return { error: substatusError };
 
   const profile = await getCurrentProfile();
   if (!isSupervisor(profile?.role)) {

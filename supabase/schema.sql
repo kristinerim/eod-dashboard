@@ -411,3 +411,8 @@ alter table jobs add column if not exists pending_completion_at timestamptz;
 -- dispatched_at / pending_completion_at above).
 alter table jobs add column if not exists completed_at timestamptz;
 alter table jobs add column if not exists cancelled_at timestamptz;
+
+-- Sub-status for jobs in "Service Rendered – Pending Completion", required
+-- when that status is selected; free text validated at the app layer like
+-- job_status itself, so existing rows just stay null until edited.
+alter table jobs add column if not exists pending_completion_substatus text;

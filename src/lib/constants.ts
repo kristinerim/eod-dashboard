@@ -115,3 +115,15 @@ export const ROLE_LABELS: Record<string, string> = {
   team_leader: "Team Leader",
   agent: "Agent",
 };
+
+export const PENDING_COMPLETION_SUBSTATUSES = [
+  "Completed (Confirmed by Client and Vendor with Photos)",
+  "Completed (Confirmed by Vendor Only with Photos)",
+  "Completed (Confirmed by Vendor Without Photos)",
+  "Completed (Confirmed by Client and Vendor Without Photos)",
+  "Completed (Confirmed by Client – Written Confirmation Only)",
+  "Completed (Endorsed to Vendor)",
+  "Ongoing Damage Claim",
+  "On Hold",
+  "Needs Attention",
+];

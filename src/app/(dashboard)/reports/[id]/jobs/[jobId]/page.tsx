@@ -63,6 +63,7 @@ export default async function JobDetailPage({
         { label: "Job number", value: job.job_number ?? "-" },
         { label: "Vendor", value: job.vendor_name ?? "-" },
         { label: "Status", value: job.job_status ?? "-" },
+        { label: "Sub-status", value: job.pending_completion_substatus ?? "-" },
         { label: "Cancellation reason", value: job.cancellation_reason ?? "-" },
         { label: "State", value: job.state ?? "-" },
         { label: "Customer phone", value: job.customer_phone ?? "-" },

@@ -15,6 +15,7 @@ interface PendingJob {
   state: string | null;
   customer_phone: string | null;
   pending_completion_at: string | null;
+  pending_completion_substatus: string | null;
 }
 
 export default async function PendingCompletionPage() {
@@ -23,7 +24,7 @@ export default async function PendingCompletionPage() {
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, pending_completion_at"
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, pending_completion_at, pending_completion_substatus"
     )
     .eq("job_status", STATUS);
 
@@ -57,6 +58,7 @@ export default async function PendingCompletionPage() {
                 <th className="px-4 py-2 font-medium">Vendor</th>
                 <th className="px-4 py-2 font-medium">State</th>
                 <th className="px-4 py-2 font-medium">Customer phone</th>
+                <th className="px-4 py-2 font-medium">Sub-status</th>
                 <th className="px-4 py-2 font-medium">Time pending</th>
               </tr>
             </thead>
@@ -77,6 +79,7 @@ export default async function PendingCompletionPage() {
                   <td className="px-4 py-2">{job.vendor_name ?? "-"}</td>
                   <td className="px-4 py-2">{job.state ?? "-"}</td>
                   <td className="px-4 py-2">{job.customer_phone ?? "-"}</td>
+                  <td className="px-4 py-2">{job.pending_completion_substatus ?? "-"}</td>
                   <td className="px-4 py-2">
                     {job.pending_completion_at ? (
                       <ElapsedBadge since={job.pending_completion_at} />

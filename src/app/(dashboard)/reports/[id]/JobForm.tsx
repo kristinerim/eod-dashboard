@@ -2,9 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { TEAM_MEMBERS, US_STATE_CODES, PLATFORMS } from "@/lib/constants";
+import {
+  TEAM_MEMBERS,
+  US_STATE_CODES,
+  PLATFORMS,
+  PENDING_COMPLETION_SUBSTATUSES,
+} from "@/lib/constants";
 import { createJob, updateJob } from "./job-actions";
 import type { Job } from "./JobsTable";
+
+const PENDING_COMPLETION_STATUS = "Service Rendered – Pending Completion";
 
 const JOB_STATUS_SUGGESTIONS = [
   "Appointment",
@@ -12,7 +19,7 @@ const JOB_STATUS_SUGGESTIONS = [
   "Dispatched",
   "In Progress",
   "On Hold",
-  "Service Rendered – Pending Completion",
+  PENDING_COMPLETION_STATUS,
   "Completed",
   "Cancelled",
 ];
@@ -42,6 +49,8 @@ export default function JobForm({
   const [jobAmount, setJobAmount] = useState(job?.job_amount?.toString() ?? "");
   const [vendorsFee, setVendorsFee] = useState(job?.vendors_fee?.toString() ?? "");
   const [refundedToClient, setRefundedToClient] = useState(job?.refunded_to_client?.toString() ?? "");
+  const [jobStatus, setJobStatus] = useState(job?.job_status ?? "");
+  const isPendingCompletion = jobStatus === PENDING_COMPLETION_STATUS;
 
   const profitPreview =
     (Number(jobAmount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
@@ -169,7 +178,8 @@ export default function JobForm({
             <Field label="Job status">
               <select
                 name="job_status"
-                defaultValue={job?.job_status ?? ""}
+                value={jobStatus}
+                onChange={(e) => setJobStatus(e.target.value)}
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
               >
                 <option value="">-</option>
@@ -208,6 +218,27 @@ export default function JobForm({
               </select>
             </Field>
           </div>
+
+          {isPendingCompletion && (
+            <Field label="Sub-status">
+              <select
+                name="pending_completion_substatus"
+                defaultValue={job?.pending_completion_substatus ?? ""}
+                required
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              >
+                <option value="" disabled>
+                  Select a sub-status
+                </option>
+                {PENDING_COMPLETION_SUBSTATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
           <p className="text-xs text-black/50">
             Setting status to &quot;Dispatched&quot; starts the ETA countdown from now, using the
             minutes entered here.
