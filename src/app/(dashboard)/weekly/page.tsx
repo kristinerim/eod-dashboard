@@ -56,12 +56,17 @@ export default async function WeeklyPage() {
     weekMap.set(start, entry);
   }
 
-  const weeks = Array.from(weekMap.values()).sort((a, b) => (a.start < b.start ? 1 : -1));
+  const weeks = Array.from(weekMap.values())
+    .filter((w) => w.jobs.length > 0)
+    .sort((a, b) => (a.start < b.start ? 1 : -1));
 
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold">Weekly summaries</h1>
       <p className="text-sm text-black/60">Weeks run Sunday through Saturday.</p>
+      {weeks.length === 0 ? (
+        <p className="text-sm text-black/70">No weeks with jobs yet.</p>
+      ) : (
       <div className="overflow-hidden rounded-lg border border-black/10">
         <table className="w-full text-sm">
           <thead className="bg-black/5 text-left">
@@ -91,6 +96,7 @@ export default async function WeeklyPage() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
