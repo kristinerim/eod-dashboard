@@ -19,6 +19,7 @@ const JOB_STATUS_SUGGESTIONS = [
   "Dispatched",
   "In Progress",
   "On Hold",
+  "Needs Attention",
   PENDING_COMPLETION_STATUS,
   "Completed",
   "Cancelled",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
   isDispatchedStatus,
+  isNeedsAttentionStatus,
   isOpenJobStatus,
   monthRangeFor,
   summarizeJobs,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import DispatchedList, { type DispatchedJob } from "@/components/DispatchedList";
+import NeedsAttentionList, { type NeedsAttentionJob } from "@/components/NeedsAttentionList";
 import AddTodayJobButton from "./AddTodayJobButton";
 
 function formatCurrency(n: number) {
@@ -110,6 +112,17 @@ export default async function DashboardPage() {
     isDispatchedStatus(j.job_status)
   );
 
+  const { data: needsAttentionData } = await supabase
+    .from("jobs")
+    .select("id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status")
+    .in(
+      "report_id",
+      reports.map((r) => r.id)
+    );
+  const needsAttentionJobs: NeedsAttentionJob[] = (
+    (needsAttentionData ?? []) as (NeedsAttentionJob & { job_status: string | null })[]
+  ).filter((j) => isNeedsAttentionStatus(j.job_status));
+
   return (
     <div className="space-y-8">
       <RealtimeRefresh tables={["jobs", "reports"]} />
@@ -125,6 +138,8 @@ export default async function DashboardPage() {
         <Card label="Job amount" value={formatCurrency(todaySummary.totalJobAmount)} />
         <Card label="Vendor payment" value={formatCurrency(todaySummary.totalVendorFee)} />
       </div>
+
+      <NeedsAttentionList jobs={needsAttentionJobs} />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Incomplete jobs</h2>
