@@ -122,6 +122,7 @@ export const PENDING_COMPLETION_SUBSTATUSES = [
   "Completed (Confirmed by Vendor Without Photos)",
   "Completed (Confirmed by Client and Vendor Without Photos)",
   "Completed (Confirmed by Client – Written Confirmation Only)",
+  "Completed (Confirmed by Client, but no written confirmation, and Vendor with Pics)",
   "Completed (Endorsed to Vendor)",
   "Ongoing Damage Claim",
   "On Hold",
