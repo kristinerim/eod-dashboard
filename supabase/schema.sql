@@ -416,3 +416,10 @@ alter table jobs add column if not exists cancelled_at timestamptz;
 -- when that status is selected; free text validated at the app layer like
 -- job_status itself, so existing rows just stay null until edited.
 alter table jobs add column if not exists pending_completion_substatus text;
+
+-- Manually-entered actual conversion/dispatch times (distinct from the
+-- automatic dispatched_at, which only reflects when the status field was
+-- changed in the app). Both optional: a job may be converted but not yet
+-- dispatched.
+alter table jobs add column if not exists time_converted timestamptz;
+alter table jobs add column if not exists time_dispatched timestamptz;

@@ -18,6 +18,16 @@ function strOrNull(v: FormDataEntryValue | null): string | null {
   return s === "" ? null : s;
 }
 
+// datetime-local inputs (e.g. "2026-07-16T14:30") have no timezone; the team
+// works in Philippine Time, so treat the entered value as PHT and convert to
+// a true UTC instant for storage.
+function datetimeLocalPHTToIso(v: FormDataEntryValue | null): string | null {
+  if (v === null) return null;
+  const s = String(v).trim();
+  if (s === "") return null;
+  return new Date(`${s}:00+08:00`).toISOString();
+}
+
 function isDispatchedStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "dispatched";
 }
@@ -85,6 +95,8 @@ function jobFieldsFromForm(formData: FormData) {
     vendor_name: strOrNull(formData.get("vendor_name")),
     job_status: strOrNull(formData.get("job_status")),
     eta_minutes: numberOrNull(formData.get("eta_minutes")),
+    time_converted: datetimeLocalPHTToIso(formData.get("time_converted")),
+    time_dispatched: datetimeLocalPHTToIso(formData.get("time_dispatched")),
     state: strOrNull(formData.get("state")),
     customer_phone: strOrNull(formData.get("customer_phone")),
     customer_charged_via: strOrNull(formData.get("customer_charged_via")),

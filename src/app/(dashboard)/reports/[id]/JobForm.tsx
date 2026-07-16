@@ -13,6 +13,15 @@ import type { Job } from "./JobsTable";
 
 const PENDING_COMPLETION_STATUS = "Service Rendered – Pending Completion";
 
+// datetime-local inputs work in wall-clock time with no timezone; the team
+// works in Philippine Time, so shift stored UTC instants into a PHT reading
+// for the input's defaultValue (mirrors src/lib/aggregate.ts's dateInPHT).
+function isoToDatetimeLocalPHT(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const shifted = new Date(new Date(iso).getTime() + 8 * 60 * 60 * 1000);
+  return shifted.toISOString().slice(0, 16);
+}
+
 const JOB_STATUS_SUGGESTIONS = [
   "Appointment",
   "Converted",
@@ -219,6 +228,29 @@ export default function JobForm({
               </select>
             </Field>
           </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Time converted (optional)">
+              <input
+                name="time_converted"
+                type="datetime-local"
+                defaultValue={isoToDatetimeLocalPHT(job?.time_converted)}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
+            </Field>
+            <Field label="Time dispatched (optional)">
+              <input
+                name="time_dispatched"
+                type="datetime-local"
+                defaultValue={isoToDatetimeLocalPHT(job?.time_dispatched)}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-black/50">
+            Record the actual time each happened — a job can be converted without being dispatched
+            yet, so both are optional.
+          </p>
 
           {isPendingCompletion && (
             <Field label="Sub-status">

@@ -24,6 +24,8 @@ export interface Job {
   pending_completion_substatus: string | null;
   cancellation_reason: string | null;
   eta_minutes: number | null;
+  time_converted: string | null;
+  time_dispatched: string | null;
   dispatched_at: string | null;
   dispatched_time: string | null;
   vendor_eta: string | null;
@@ -42,6 +44,7 @@ type Column = {
   key: keyof Job;
   label: string;
   currency?: boolean;
+  datetime?: boolean;
 };
 
 const COLUMNS: Column[] = [
@@ -58,6 +61,8 @@ const COLUMNS: Column[] = [
   { key: "pending_completion_substatus", label: "Sub-status" },
   { key: "cancellation_reason", label: "Cancellation reason" },
   { key: "eta_minutes", label: "ETA (min)" },
+  { key: "time_converted", label: "Time converted", datetime: true },
+  { key: "time_dispatched", label: "Time dispatched", datetime: true },
   { key: "state", label: "State" },
   { key: "customer_phone", label: "Customer phone" },
   { key: "customer_charged_via", label: "Charged via" },
@@ -79,6 +84,11 @@ const SEARCH_FIELDS: (keyof Job)[] = [
 function formatCurrency(n: number | null) {
   if (n === null) return "-";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function formatDateTime(d: string | null) {
+  if (!d) return "-";
+  return new Date(d).toLocaleString("en-US");
 }
 
 export default function JobsTable({
@@ -265,7 +275,9 @@ export default function JobsTable({
                   <td key={c.key} className="whitespace-nowrap px-3 py-2">
                     {c.currency
                       ? formatCurrency(j[c.key] as number | null)
-                      : (j[c.key] as string | number | null) ?? "-"}
+                      : c.datetime
+                        ? formatDateTime(j[c.key] as string | null)
+                        : (j[c.key] as string | number | null) ?? "-"}
                   </td>
                 ))}
               </tr>
