@@ -47,6 +47,36 @@ export function isActiveJobStatus(status: string | null): boolean {
   return s === "dispatched" || s === "in progress" || s === "on hold";
 }
 
+export interface EtaJobInput {
+  job_status: string | null;
+  dispatched_at: string | null;
+  time_dispatched: string | null;
+  eta_minutes: number | null;
+}
+
+/**
+ * The instant ETA tracking should count from: the manually-entered actual
+ * dispatch time if one was recorded, otherwise the automatic timestamp set
+ * when the status was changed to Dispatched (only while it's still
+ * Dispatched — that timestamp is cleared once the status moves on).
+ */
+export function etaStartTime(job: EtaJobInput): string | null {
+  if (job.time_dispatched) return job.time_dispatched;
+  if (isDispatchedStatus(job.job_status) && job.dispatched_at) return job.dispatched_at;
+  return null;
+}
+
+export function etaDeadline(job: EtaJobInput): number | null {
+  const start = etaStartTime(job);
+  if (!start || job.eta_minutes === null) return null;
+  return new Date(start).getTime() + job.eta_minutes * 60 * 1000;
+}
+
+/** Jobs that should appear in ETA/dispatch-tracking views. */
+export function isEtaTrackedJob(job: EtaJobInput): boolean {
+  return isOpenJobStatus(job.job_status) && etaDeadline(job) !== null;
+}
+
 export function summarizeJobs(jobs: JobSummaryInput[]): JobSummary {
   let totalProfit = 0;
   let totalJobAmount = 0;

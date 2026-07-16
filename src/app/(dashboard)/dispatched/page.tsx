@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { isDispatchedStatus } from "@/lib/aggregate";
+import { isEtaTrackedJob } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import DispatchedByDate, { type OpenJob } from "@/components/DispatchedByDate";
 
@@ -18,7 +18,7 @@ export default async function DispatchedPage() {
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, dispatched_at, eta_minutes"
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, dispatched_at, time_dispatched, eta_minutes"
     )
     .in(
       "report_id",
@@ -28,7 +28,7 @@ export default async function DispatchedPage() {
   const reportDateById = new Map(reports.map((r) => [r.id, r.report_date]));
 
   const openJobs: OpenJob[] = (jobs ?? [])
-    .filter((j) => isDispatchedStatus(j.job_status))
+    .filter((j) => isEtaTrackedJob(j))
     .map((j) => ({ ...j, report_date: reportDateById.get(j.report_id)! }));
 
   return (
@@ -36,8 +36,8 @@ export default async function DispatchedPage() {
       <RealtimeRefresh tables={["jobs"]} />
       <h1 className="text-lg font-semibold">Dispatched jobs</h1>
       <p className="text-sm text-black/60">
-        Every job currently in Dispatched status, grouped by day. Live countdown shown where an
-        ETA is set.
+        Every job with an active ETA countdown — from the actual dispatch time when recorded,
+        otherwise from when the status was set to Dispatched — grouped by day.
       </p>
       <DispatchedByDate jobs={openJobs} />
     </div>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import {
-  isDispatchedStatus,
+  isEtaTrackedJob,
   isNeedsAttentionStatus,
   isOpenJobStatus,
   monthRangeFor,
@@ -100,16 +100,15 @@ export default async function DashboardPage() {
   const { data: dispatchedData } = await supabase
     .from("jobs")
     .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, dispatched_at, eta_minutes"
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, dispatched_at, time_dispatched, eta_minutes"
     )
     .in(
       "report_id",
       reports.map((r) => r.id)
     )
-    .not("dispatched_at", "is", null)
     .not("eta_minutes", "is", null);
   const dispatchedJobs: DispatchedJob[] = ((dispatchedData ?? []) as DispatchedJob[]).filter((j) =>
-    isDispatchedStatus(j.job_status)
+    isEtaTrackedJob(j)
   );
 
   const { data: needsAttentionData } = await supabase

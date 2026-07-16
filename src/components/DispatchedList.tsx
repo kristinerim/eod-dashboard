@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import CountdownBadge from "./CountdownBadge";
+import { etaDeadline } from "@/lib/aggregate";
 
 export interface DispatchedJob {
   id: string;
@@ -14,8 +15,9 @@ export interface DispatchedJob {
   state: string | null;
   customer_phone: string | null;
   job_status: string | null;
-  dispatched_at: string;
-  eta_minutes: number;
+  dispatched_at: string | null;
+  time_dispatched: string | null;
+  eta_minutes: number | null;
 }
 
 interface Props {
@@ -27,11 +29,13 @@ interface Props {
 export default function DispatchedList({ jobs, limit, viewAllHref }: Props) {
   const sorted = useMemo(() => {
     return [...jobs]
-      .map((j) => ({
-        job: j,
-        deadline: new Date(j.dispatched_at).getTime() + j.eta_minutes * 60 * 1000,
-      }))
-      .sort((a, b) => a.deadline - b.deadline);
+      .map((j) => ({ job: j, deadline: etaDeadline(j) }))
+      .sort((a, b) => {
+        if (a.deadline === null && b.deadline === null) return 0;
+        if (a.deadline === null) return 1;
+        if (b.deadline === null) return -1;
+        return a.deadline - b.deadline;
+      });
   }, [jobs]);
 
   const shown = limit ? sorted.slice(0, limit) : sorted;

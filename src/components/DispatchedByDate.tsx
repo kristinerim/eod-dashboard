@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import CountdownBadge from "./CountdownBadge";
+import { etaDeadline } from "@/lib/aggregate";
 
 export interface OpenJob {
   id: string;
@@ -16,6 +17,7 @@ export interface OpenJob {
   customer_phone: string | null;
   job_status: string | null;
   dispatched_at: string | null;
+  time_dispatched: string | null;
   eta_minutes: number | null;
 }
 
@@ -26,11 +28,6 @@ function formatDate(d: string) {
     month: "long",
     day: "numeric",
   });
-}
-
-function deadlineFor(job: OpenJob): number | null {
-  if (!job.dispatched_at || job.eta_minutes === null) return null;
-  return new Date(job.dispatched_at).getTime() + job.eta_minutes * 60 * 1000;
 }
 
 export default function DispatchedByDate({ jobs }: { jobs: OpenJob[] }) {
@@ -47,7 +44,7 @@ export default function DispatchedByDate({ jobs }: { jobs: OpenJob[] }) {
       .map(([date, dateJobs]) => ({
         date,
         rows: dateJobs
-          .map((job) => ({ job, deadline: deadlineFor(job) }))
+          .map((job) => ({ job, deadline: etaDeadline(job) }))
           .sort((a, b) => {
             if (a.deadline === null && b.deadline === null) return 0;
             if (a.deadline === null) return 1;
