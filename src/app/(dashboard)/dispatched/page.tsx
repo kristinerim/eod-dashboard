@@ -18,7 +18,7 @@ export default async function DispatchedPage() {
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, dispatched_at, time_dispatched, eta_minutes"
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, time_dispatched, eta_minutes"
     )
     .in(
       "report_id",
@@ -36,8 +36,7 @@ export default async function DispatchedPage() {
       <RealtimeRefresh tables={["jobs"]} />
       <h1 className="text-lg font-semibold">Dispatched jobs</h1>
       <p className="text-sm text-black/60">
-        Every job with an active ETA countdown — from the actual dispatch time when recorded,
-        otherwise from when the status was set to Dispatched — grouped by day.
+        Every job with an active ETA countdown, timed from the time dispatched — grouped by day.
       </p>
       <DispatchedByDate jobs={openJobs} />
     </div>

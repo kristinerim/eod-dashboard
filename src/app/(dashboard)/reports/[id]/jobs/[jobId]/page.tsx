@@ -88,7 +88,6 @@ export default async function JobDetailPage({
         { label: "ETA (minutes)", value: job.eta_minutes ?? "-" },
         { label: "Time converted", value: formatDateTime(job.time_converted) },
         { label: "Time dispatched", value: formatDateTime(job.time_dispatched) },
-        { label: "Dispatched at", value: formatDateTime(job.dispatched_at) },
         { label: "Dispatched / appt notes", value: job.dispatched_time ?? "-" },
         { label: "Vendor ETA (raw)", value: job.vendor_eta ?? "-" },
       ],

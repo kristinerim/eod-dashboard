@@ -26,7 +26,6 @@ export interface Job {
   eta_minutes: number | null;
   time_converted: string | null;
   time_dispatched: string | null;
-  dispatched_at: string | null;
   dispatched_time: string | null;
   vendor_eta: string | null;
   reviewed_by: string | null;

@@ -62,7 +62,10 @@ export default function JobForm({
   const [refundedToClient, setRefundedToClient] = useState(job?.refunded_to_client?.toString() ?? "");
   const [jobStatus, setJobStatus] = useState(job?.job_status ?? "");
   const [vendorPaidVia, setVendorPaidVia] = useState(job?.vendor_paid_via ?? "");
+  const [timeDispatched, setTimeDispatched] = useState(isoToDatetimeLocalPHT(job?.time_dispatched));
   const isPendingCompletion = jobStatus === PENDING_COMPLETION_STATUS;
+  const isDispatchedSelected = jobStatus.trim().toLowerCase() === "dispatched";
+  const needsTimeDispatched = isDispatchedSelected && !timeDispatched;
 
   const profitPreview =
     (Number(jobAmount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
@@ -265,19 +268,28 @@ export default function JobForm({
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
               />
             </Field>
-            <Field label="Time dispatched (optional)">
+            <Field label={needsTimeDispatched ? "Time dispatched (required)" : "Time dispatched (optional)"}>
               <input
                 name="time_dispatched"
                 type="datetime-local"
-                defaultValue={isoToDatetimeLocalPHT(job?.time_dispatched)}
+                required={needsTimeDispatched}
+                value={timeDispatched}
+                onChange={(e) => setTimeDispatched(e.target.value)}
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
               />
             </Field>
           </div>
-          <p className="text-xs text-black/50">
-            The ETA countdown starts from the time dispatched if entered, otherwise from when the
-            status is set to &quot;Dispatched.&quot;
-          </p>
+          {needsTimeDispatched ? (
+            <p className="text-xs font-medium text-amber-600">
+              Status is set to &quot;Dispatched&quot; — enter the time this happened to start the
+              ETA countdown.
+            </p>
+          ) : (
+            <p className="text-xs text-black/50">
+              The ETA countdown always starts from the time dispatched, whether it was entered now
+              or when the job was created.
+            </p>
+          )}
 
           {job && (
             <Field label="Refunded to client">

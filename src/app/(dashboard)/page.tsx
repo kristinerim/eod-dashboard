@@ -100,7 +100,7 @@ export default async function DashboardPage() {
   const { data: dispatchedData } = await supabase
     .from("jobs")
     .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, dispatched_at, time_dispatched, eta_minutes"
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, time_dispatched, eta_minutes"
     )
     .in(
       "report_id",

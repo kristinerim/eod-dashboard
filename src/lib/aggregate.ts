@@ -49,21 +49,18 @@ export function isActiveJobStatus(status: string | null): boolean {
 
 export interface EtaJobInput {
   job_status: string | null;
-  dispatched_at: string | null;
   time_dispatched: string | null;
   eta_minutes: number | null;
 }
 
 /**
- * The instant ETA tracking should count from: the manually-entered actual
- * dispatch time if one was recorded, otherwise the automatic timestamp set
- * when the status was changed to Dispatched (only while it's still
- * Dispatched — that timestamp is cleared once the status moves on).
+ * The instant ETA tracking counts from: the actual dispatch time, whether it
+ * was entered at job creation or (when the job's status is set to
+ * Dispatched) at that point instead. This is the single source of truth for
+ * ETA tracking — there's no separate automatic timestamp anymore.
  */
 export function etaStartTime(job: EtaJobInput): string | null {
-  if (job.time_dispatched) return job.time_dispatched;
-  if (isDispatchedStatus(job.job_status) && job.dispatched_at) return job.dispatched_at;
-  return null;
+  return job.time_dispatched ?? null;
 }
 
 export function etaDeadline(job: EtaJobInput): number | null {

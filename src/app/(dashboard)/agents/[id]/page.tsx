@@ -18,7 +18,6 @@ interface JobRow extends JobSummaryInput {
   report_id: string;
   job_number: string | null;
   vendor_name: string | null;
-  dispatched_at: string | null;
 }
 
 interface TimeEntry {
@@ -92,7 +91,7 @@ export default async function AgentDetailPage({ params }: { params: Promise<{ id
     ? await supabase
         .from("jobs")
         .select(
-          "report_id, profit, job_amount, vendors_fee, job_status, customer_charged_via, job_number, vendor_name, dispatched_at"
+          "report_id, profit, job_amount, vendors_fee, job_status, customer_charged_via, job_number, vendor_name"
         )
         .eq("agent", agent.agent_name)
         .in("report_id", reportIds.length > 0 ? reportIds : ["00000000-0000-0000-0000-000000000000"])

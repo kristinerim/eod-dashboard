@@ -32,6 +32,18 @@ function isDispatchedStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "dispatched";
 }
 
+// The ETA countdown always runs off time_dispatched now (no more separate
+// automatic timestamp), so saving a job as Dispatched requires it — either
+// entered at creation already, or entered right now.
+function validateTimeDispatchedRequired(
+  jobStatus: string | null,
+  timeDispatched: string | null
+): string | null {
+  if (!isDispatchedStatus(jobStatus)) return null;
+  if (!timeDispatched) return "Enter the time dispatched.";
+  return null;
+}
+
 function isPendingCompletionStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "service rendered – pending completion";
 }
@@ -150,6 +162,12 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
   const newJobError = validateNewJobRequiredFields(fields);
   if (newJobError) return { error: newJobError };
 
+  const timeDispatchedError = validateTimeDispatchedRequired(
+    fields.job_status,
+    fields.time_dispatched
+  );
+  if (timeDispatchedError) return { error: timeDispatchedError };
+
   const substatusError = validatePendingCompletionSubstatus(
     fields.job_status,
     fields.pending_completion_substatus
@@ -177,7 +195,6 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     row_number: (count ?? 0) + 1,
     source: "manual",
     created_by: user.id,
-    dispatched_at: isDispatchedStatus(fields.job_status) ? new Date().toISOString() : null,
     pending_completion_at: isPendingCompletionStatus(fields.job_status)
       ? new Date().toISOString()
       : null,
@@ -198,7 +215,6 @@ type JobContext =
       reportId: string;
       currentAgent: string | null;
       currentStatus: string | null;
-      currentDispatchedAt: string | null;
       currentPendingCompletionAt: string | null;
       currentCompletedAt: string | null;
       currentCancelledAt: string | null;
@@ -214,9 +230,7 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
 
   const { data: existing, error } = await supabase
     .from("jobs")
-    .select(
-      "report_id, agent, job_status, dispatched_at, pending_completion_at, completed_at, cancelled_at"
-    )
+    .select("report_id, agent, job_status, pending_completion_at, completed_at, cancelled_at")
     .eq("id", jobId)
     .single();
 
@@ -228,7 +242,6 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
     reportId: existing.report_id as string,
     currentAgent: existing.agent,
     currentStatus: existing.job_status,
-    currentDispatchedAt: existing.dispatched_at,
     currentPendingCompletionAt: existing.pending_completion_at,
     currentCompletedAt: existing.completed_at,
     currentCancelledAt: existing.cancelled_at,
@@ -243,7 +256,6 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
     reportId,
     currentAgent,
     currentStatus,
-    currentDispatchedAt,
     currentPendingCompletionAt,
     currentCompletedAt,
     currentCancelledAt,
@@ -253,6 +265,12 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
 
   const coreError = validateCoreRequiredFields(fields);
   if (coreError) return { error: coreError };
+
+  const timeDispatchedError = validateTimeDispatchedRequired(
+    fields.job_status,
+    fields.time_dispatched
+  );
+  if (timeDispatchedError) return { error: timeDispatchedError };
 
   const substatusError = validatePendingCompletionSubstatus(
     fields.job_status,
@@ -272,12 +290,6 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
       return { error: "You can only assign jobs to yourself." };
     }
   }
-
-  const dispatched_at = isDispatchedStatus(fields.job_status)
-    ? isDispatchedStatus(currentStatus) && currentDispatchedAt
-      ? currentDispatchedAt
-      : new Date().toISOString()
-    : null;
 
   const pending_completion_at = isPendingCompletionStatus(fields.job_status)
     ? isPendingCompletionStatus(currentStatus) && currentPendingCompletionAt
@@ -299,7 +311,7 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
 
   const { error } = await supabase
     .from("jobs")
-    .update({ ...fields, dispatched_at, pending_completion_at, completed_at, cancelled_at })
+    .update({ ...fields, pending_completion_at, completed_at, cancelled_at })
     .eq("id", jobId);
 
   if (error) return { error: error.message };

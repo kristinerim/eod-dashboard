@@ -16,7 +16,6 @@ export interface OpenJob {
   state: string | null;
   customer_phone: string | null;
   job_status: string | null;
-  dispatched_at: string | null;
   time_dispatched: string | null;
   eta_minutes: number | null;
 }
