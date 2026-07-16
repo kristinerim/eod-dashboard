@@ -31,6 +31,7 @@ export interface Job {
   vendor_eta: string | null;
   reviewed_by: string | null;
   state: string | null;
+  customer_name: string | null;
   customer_phone: string | null;
   call_que: string | null;
   brex_check: string | null;
@@ -64,9 +65,10 @@ const COLUMNS: Column[] = [
   { key: "time_converted", label: "Time converted", datetime: true },
   { key: "time_dispatched", label: "Time dispatched", datetime: true },
   { key: "state", label: "State" },
+  { key: "customer_name", label: "Customer name" },
   { key: "customer_phone", label: "Customer phone" },
-  { key: "customer_charged_via", label: "Charged via" },
-  { key: "vendor_paid_via", label: "Paid via" },
+  { key: "customer_charged_via", label: "Customer charged via" },
+  { key: "vendor_paid_via", label: "Vendor paid via" },
   { key: "reviewed_by", label: "Reviewed by" },
   { key: "dispatched_time", label: "Dispatched / appt notes" },
   { key: "notes", label: "Notes" },
@@ -78,6 +80,7 @@ const SEARCH_FIELDS: (keyof Job)[] = [
   "job_number",
   "vendor_name",
   "notes",
+  "customer_name",
   "customer_phone",
 ];
 

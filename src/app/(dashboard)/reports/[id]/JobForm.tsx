@@ -53,6 +53,7 @@ export default function JobForm({
 }: Props) {
   const agentNames = agentOptions ?? TEAM_MEMBERS;
   const isLockedToSelf = currentRole === "agent";
+  const isNewJob = !job;
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,7 @@ export default function JobForm({
   const [vendorsFee, setVendorsFee] = useState(job?.vendors_fee?.toString() ?? "");
   const [refundedToClient, setRefundedToClient] = useState(job?.refunded_to_client?.toString() ?? "");
   const [jobStatus, setJobStatus] = useState(job?.job_status ?? "");
+  const [vendorPaidVia, setVendorPaidVia] = useState(job?.vendor_paid_via ?? "");
   const isPendingCompletion = jobStatus === PENDING_COMPLETION_STATUS;
 
   const profitPreview =
@@ -95,6 +97,8 @@ export default function JobForm({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
+          <SectionHeading title="Job Details" first />
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Agent">
               {isLockedToSelf ? (
@@ -140,9 +144,10 @@ export default function JobForm({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Job #">
+            <Field label="Job # (required)">
               <input
                 name="job_number"
+                required
                 defaultValue={job?.job_number ?? ""}
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
               />
@@ -157,11 +162,12 @@ export default function JobForm({
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <Field label="Job amount">
+            <Field label="Job amount (required)">
               <input
                 name="job_amount"
                 type="number"
                 step="0.01"
+                required
                 value={jobAmount}
                 onChange={(e) => setJobAmount(e.target.value)}
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
@@ -229,29 +235,6 @@ export default function JobForm({
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Time converted (optional)">
-              <input
-                name="time_converted"
-                type="datetime-local"
-                defaultValue={isoToDatetimeLocalPHT(job?.time_converted)}
-                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-              />
-            </Field>
-            <Field label="Time dispatched (optional)">
-              <input
-                name="time_dispatched"
-                type="datetime-local"
-                defaultValue={isoToDatetimeLocalPHT(job?.time_dispatched)}
-                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-              />
-            </Field>
-          </div>
-          <p className="text-xs text-black/50">
-            Record the actual time each happened — a job can be converted without being dispatched
-            yet, so both are optional.
-          </p>
-
           {isPendingCompletion && (
             <Field label="Sub-status">
               <select
@@ -272,21 +255,77 @@ export default function JobForm({
             </Field>
           )}
 
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={isNewJob ? "Time converted (required)" : "Time converted"}>
+              <input
+                name="time_converted"
+                type="datetime-local"
+                required={isNewJob}
+                defaultValue={isoToDatetimeLocalPHT(job?.time_converted)}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
+            </Field>
+            <Field label="Time dispatched (optional)">
+              <input
+                name="time_dispatched"
+                type="datetime-local"
+                defaultValue={isoToDatetimeLocalPHT(job?.time_dispatched)}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
+            </Field>
+          </div>
           <p className="text-xs text-black/50">
-            Setting status to &quot;Dispatched&quot; starts the ETA countdown from now, using the
-            minutes entered here.
+            The ETA countdown starts from the time dispatched if entered, otherwise from when the
+            status is set to &quot;Dispatched.&quot;
           </p>
 
-          <Field label="Customer phone">
+          {job && (
+            <Field label="Refunded to client">
+              <input
+                name="refunded_to_client"
+                type="number"
+                step="0.01"
+                value={refundedToClient}
+                onChange={(e) => setRefundedToClient(e.target.value)}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
+            </Field>
+          )}
+
+          <SectionHeading title="Customer Details" />
+
+          <Field label={isNewJob ? "Customer name (required)" : "Customer name"}>
             <input
-              name="customer_phone"
-              defaultValue={job?.customer_phone ?? ""}
+              name="customer_name"
+              required={isNewJob}
+              defaultValue={job?.customer_name ?? ""}
               className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
             />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Charged via">
+            <Field label="Customer phone">
+              <input
+                name="customer_phone"
+                defaultValue={job?.customer_phone ?? ""}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
+            </Field>
+            {job && (
+              <Field label="Call que">
+                <input
+                  name="call_que"
+                  defaultValue={job.call_que ?? ""}
+                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                />
+              </Field>
+            )}
+          </div>
+
+          <SectionHeading title="Payment Details" />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Customer charged via">
               <select
                 name="customer_charged_via"
                 defaultValue={job?.customer_charged_via ?? ""}
@@ -300,10 +339,11 @@ export default function JobForm({
                 ))}
               </select>
             </Field>
-            <Field label="Paid via">
+            <Field label="Vendor paid via">
               <select
                 name="vendor_paid_via"
-                defaultValue={job?.vendor_paid_via ?? ""}
+                value={vendorPaidVia}
+                onChange={(e) => setVendorPaidVia(e.target.value)}
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
               >
                 <option value="">-</option>
@@ -316,6 +356,19 @@ export default function JobForm({
             </Field>
           </div>
 
+          {vendorPaidVia && (
+            <Field label="Last 4 digits of VPC">
+              <input
+                name="last4_vpc"
+                maxLength={4}
+                defaultValue={job?.last4_vpc ?? ""}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
+            </Field>
+          )}
+
+          <SectionHeading title="Admin & Additional Notes" />
+
           <Field label="Notes">
             <textarea
               name="notes"
@@ -326,29 +379,7 @@ export default function JobForm({
           </Field>
 
           {job && (
-            <div className="space-y-3 border-t border-black/10 pt-3">
-              <p className="text-xs font-medium text-black/50">
-                Follow-up fields (filled in after the job is entered)
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Refunded to client">
-                  <input
-                    name="refunded_to_client"
-                    type="number"
-                    step="0.01"
-                    value={refundedToClient}
-                    onChange={(e) => setRefundedToClient(e.target.value)}
-                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                  />
-                </Field>
-                <Field label="Last 4 of VPC">
-                  <input
-                    name="last4_vpc"
-                    defaultValue={job.last4_vpc ?? ""}
-                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                  />
-                </Field>
-              </div>
+            <>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Reviewed by">
                   <input
@@ -357,15 +388,6 @@ export default function JobForm({
                     className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                   />
                 </Field>
-                <Field label="Call que">
-                  <input
-                    name="call_que"
-                    defaultValue={job.call_que ?? ""}
-                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                  />
-                </Field>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
                 <Field label="WC (entered by Jon)">
                   <input
                     name="wc_entered_by_jon"
@@ -373,15 +395,15 @@ export default function JobForm({
                     className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                   />
                 </Field>
-                <Field label="Final checked by Zumi">
-                  <input
-                    name="final_checked_by_zumi"
-                    defaultValue={job.final_checked_by_zumi ?? ""}
-                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                  />
-                </Field>
               </div>
-            </div>
+              <Field label="Final checked by Zumi">
+                <input
+                  name="final_checked_by_zumi"
+                  defaultValue={job.final_checked_by_zumi ?? ""}
+                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                />
+              </Field>
+            </>
           )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -405,6 +427,16 @@ export default function JobForm({
         </form>
       </div>
     </div>
+  );
+}
+
+function SectionHeading({ title, first }: { title: string; first?: boolean }) {
+  return (
+    <h3
+      className={`text-sm font-semibold text-black/80 ${first ? "" : "border-t border-black/10 pt-3"}`}
+    >
+      {title}
+    </h3>
   );
 }
 

@@ -423,3 +423,6 @@ alter table jobs add column if not exists pending_completion_substatus text;
 -- dispatched.
 alter table jobs add column if not exists time_converted timestamptz;
 alter table jobs add column if not exists time_dispatched timestamptz;
+
+-- Customer Details section of the Add Job form.
+alter table jobs add column if not exists customer_name text;

@@ -58,6 +58,29 @@ function validatePendingCompletionSubstatus(
   return null;
 }
 
+// Required on every save. Both fields are, and always have been, filled in
+// on essentially every real job, so enforcing this on edits too is safe.
+function validateCoreRequiredFields(fields: {
+  job_number: string | null;
+  job_amount: number | null;
+}): string | null {
+  if (!fields.job_number) return "Enter a job number.";
+  if (fields.job_amount === null) return "Enter the job amount.";
+  return null;
+}
+
+// Required only when creating a new job — these fields didn't exist before,
+// so most historical jobs don't have them, and requiring them on every edit
+// would block editing anything created before this feature shipped.
+function validateNewJobRequiredFields(fields: {
+  customer_name: string | null;
+  time_converted: string | null;
+}): string | null {
+  if (!fields.customer_name) return "Enter the customer name.";
+  if (!fields.time_converted) return "Enter the time converted.";
+  return null;
+}
+
 type ActionResult = { success: true; id?: string } | { error: string };
 
 export async function getOrCreateTodaysReport(): Promise<ActionResult> {
@@ -98,6 +121,7 @@ function jobFieldsFromForm(formData: FormData) {
     time_converted: datetimeLocalPHTToIso(formData.get("time_converted")),
     time_dispatched: datetimeLocalPHTToIso(formData.get("time_dispatched")),
     state: strOrNull(formData.get("state")),
+    customer_name: strOrNull(formData.get("customer_name")),
     customer_phone: strOrNull(formData.get("customer_phone")),
     customer_charged_via: strOrNull(formData.get("customer_charged_via")),
     vendor_paid_via: strOrNull(formData.get("vendor_paid_via")),
@@ -119,6 +143,12 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
   if (!user) return { error: "Not signed in." };
 
   const fields = jobFieldsFromForm(formData);
+
+  const coreError = validateCoreRequiredFields(fields);
+  if (coreError) return { error: coreError };
+
+  const newJobError = validateNewJobRequiredFields(fields);
+  if (newJobError) return { error: newJobError };
 
   const substatusError = validatePendingCompletionSubstatus(
     fields.job_status,
@@ -220,6 +250,9 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
   } = check;
 
   const fields = jobFieldsFromForm(formData);
+
+  const coreError = validateCoreRequiredFields(fields);
+  if (coreError) return { error: coreError };
 
   const substatusError = validatePendingCompletionSubstatus(
     fields.job_status,
