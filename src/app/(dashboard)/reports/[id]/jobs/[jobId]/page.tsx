@@ -21,7 +21,7 @@ function formatDate(d: string) {
 
 function formatDateTime(d: string | null) {
   if (!d) return "-";
-  return new Date(d).toLocaleString("en-US");
+  return new Date(d).toLocaleString("en-US", { timeZone: "Asia/Manila" });
 }
 
 export default async function JobDetailPage({

@@ -182,10 +182,16 @@ export default async function HoursPage() {
                       {dayEntries.map((e) => (
                         <tr key={e.id} className="border-t border-black/10">
                           <td className="px-4 py-2">
-                            {new Date(e.clock_in).toLocaleTimeString("en-US")}
+                            {new Date(e.clock_in).toLocaleTimeString("en-US", {
+                              timeZone: "Asia/Manila",
+                            })}
                           </td>
                           <td className="px-4 py-2">
-                            {e.clock_out ? new Date(e.clock_out).toLocaleTimeString("en-US") : "-"}
+                            {e.clock_out
+                              ? new Date(e.clock_out).toLocaleTimeString("en-US", {
+                                  timeZone: "Asia/Manila",
+                                })
+                              : "-"}
                           </td>
                           <td className="px-4 py-2">{formatHours(durationMs(e))}</td>
                         </tr>
