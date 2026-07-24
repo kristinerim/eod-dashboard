@@ -60,6 +60,28 @@ function isAppointmentStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "appointment";
 }
 
+function isConvertedStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "converted";
+}
+
+// Dispatching an appointment or converted job means the ETA now measures
+// something different (time to arrival, not time to the appointment/
+// conversion), so it must be actively reconsidered at this transition, not
+// just carried over from before.
+function validateEtaUpdatedOnDispatch(
+  currentStatus: string | null,
+  newStatus: string | null,
+  currentEtaMinutes: number | null,
+  newEtaMinutes: number | null
+): string | null {
+  const wasAppointmentOrConverted =
+    isAppointmentStatus(currentStatus) || isConvertedStatus(currentStatus);
+  if (!wasAppointmentOrConverted || !isDispatchedStatus(newStatus)) return null;
+  if (newEtaMinutes === null) return "Enter the ETA before dispatching this job.";
+  if (newEtaMinutes === currentEtaMinutes) return "Update the ETA before dispatching this job.";
+  return null;
+}
+
 function validatePendingCompletionSubstatus(
   jobStatus: string | null,
   substatus: string | null
@@ -226,6 +248,7 @@ type JobContext =
       reportId: string;
       currentAgent: string | null;
       currentStatus: string | null;
+      currentEtaMinutes: number | null;
       currentPendingCompletionAt: string | null;
       currentCompletedAt: string | null;
       currentCancelledAt: string | null;
@@ -241,7 +264,7 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
 
   const { data: existing, error } = await supabase
     .from("jobs")
-    .select("report_id, agent, job_status, pending_completion_at, completed_at, cancelled_at")
+    .select("report_id, agent, job_status, eta_minutes, pending_completion_at, completed_at, cancelled_at")
     .eq("id", jobId)
     .single();
 
@@ -253,6 +276,7 @@ async function requireJobContext(jobId: string): Promise<JobContext> {
     reportId: existing.report_id as string,
     currentAgent: existing.agent,
     currentStatus: existing.job_status,
+    currentEtaMinutes: existing.eta_minutes,
     currentPendingCompletionAt: existing.pending_completion_at,
     currentCompletedAt: existing.completed_at,
     currentCancelledAt: existing.cancelled_at,
@@ -267,6 +291,7 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
     reportId,
     currentAgent,
     currentStatus,
+    currentEtaMinutes,
     currentPendingCompletionAt,
     currentCompletedAt,
     currentCancelledAt,
@@ -282,6 +307,14 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
     fields.time_dispatched
   );
   if (timeDispatchedError) return { error: timeDispatchedError };
+
+  const etaUpdatedError = validateEtaUpdatedOnDispatch(
+    currentStatus,
+    fields.job_status,
+    currentEtaMinutes,
+    fields.eta_minutes
+  );
+  if (etaUpdatedError) return { error: etaUpdatedError };
 
   const substatusError = validatePendingCompletionSubstatus(
     fields.job_status,

@@ -63,9 +63,23 @@ export default function JobForm({
   const [jobStatus, setJobStatus] = useState(job?.job_status ?? "");
   const [vendorPaidVia, setVendorPaidVia] = useState(job?.vendor_paid_via ?? "");
   const [timeDispatched, setTimeDispatched] = useState(isoToDatetimeLocalPHT(job?.time_dispatched));
+  const [etaMinutes, setEtaMinutes] = useState(job?.eta_minutes?.toString() ?? "");
   const isPendingCompletion = jobStatus === PENDING_COMPLETION_STATUS;
   const isDispatchedSelected = jobStatus.trim().toLowerCase() === "dispatched";
   const needsTimeDispatched = isDispatchedSelected && !timeDispatched;
+
+  // Dispatching an appointment or converted job means the ETA now measures
+  // something different (time to arrival, not time to the appointment/
+  // conversion) — it must be actively reconsidered at this transition, not
+  // just carried over from before.
+  const originalStatus = (job?.job_status ?? "").trim().toLowerCase();
+  const wasAppointmentOrConverted = originalStatus === "appointment" || originalStatus === "converted";
+  const originalEta = job?.eta_minutes?.toString() ?? "";
+  const needsEtaUpdateOnDispatch =
+    !isNewJob &&
+    wasAppointmentOrConverted &&
+    isDispatchedSelected &&
+    (etaMinutes.trim() === "" || etaMinutes.trim() === originalEta.trim());
 
   const isAppointmentSelected = jobStatus.trim().toLowerCase() === "appointment";
   const isCancelledSelected = jobStatus.trim().toLowerCase() === "cancelled";
@@ -77,6 +91,12 @@ export default function JobForm({
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+
+    if (needsEtaUpdateOnDispatch) {
+      setError("Update the ETA before dispatching this job.");
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
 
     startTransition(async () => {
@@ -218,13 +238,15 @@ export default function JobForm({
                 )}
               </select>
             </Field>
-            <Field label="ETA (minutes)">
+            <Field label={needsEtaUpdateOnDispatch ? "ETA (minutes) (required)" : "ETA (minutes)"}>
               <input
                 name="eta_minutes"
                 type="number"
                 min="0"
                 step="1"
-                defaultValue={job?.eta_minutes?.toString() ?? ""}
+                required={needsEtaUpdateOnDispatch}
+                value={etaMinutes}
+                onChange={(e) => setEtaMinutes(e.target.value)}
                 className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
               />
             </Field>
@@ -243,6 +265,12 @@ export default function JobForm({
               </select>
             </Field>
           </div>
+          {needsEtaUpdateOnDispatch && (
+            <p className="text-xs font-medium text-amber-600">
+              Status is moving from &quot;{job?.job_status}&quot; to &quot;Dispatched&quot; — update the
+              ETA to reflect the actual dispatch, not the {originalStatus === "appointment" ? "appointment" : "conversion"}.
+            </p>
+          )}
 
           {isPendingCompletion && (
             <Field label="Sub-status">
