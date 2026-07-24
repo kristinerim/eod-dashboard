@@ -71,7 +71,11 @@ export function etaDeadline(job: EtaJobInput): number | null {
 
 /** Jobs that should appear in ETA/dispatch-tracking views. */
 export function isEtaTrackedJob(job: EtaJobInput): boolean {
-  return isOpenJobStatus(job.job_status) && etaDeadline(job) !== null;
+  return (
+    isOpenJobStatus(job.job_status) &&
+    !isPendingCompletionStatus(job.job_status) &&
+    etaDeadline(job) !== null
+  );
 }
 
 export function summarizeJobs(jobs: JobSummaryInput[]): JobSummary {
