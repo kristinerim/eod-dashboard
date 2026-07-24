@@ -47,7 +47,8 @@ export async function cancelJob(
 
   const { error } = await admin
     .from("jobs")
-    .update({ job_status: "Cancelled", cancellation_reason: reason.trim(), cancelled_at })
+    // Cancelled jobs never have a real profit to report.
+    .update({ job_status: "Cancelled", cancellation_reason: reason.trim(), cancelled_at, profit: null })
     .eq("id", jobId);
   if (error) return { error: error.message };
 
@@ -67,12 +68,18 @@ export async function refundJob(
   const admin = createAdminClient();
   const { data: job, error: fetchError } = await admin
     .from("jobs")
-    .select("job_amount, vendors_fee")
+    .select("job_amount, vendors_fee, job_status")
     .eq("id", jobId)
     .single();
   if (fetchError || !job) return { error: fetchError?.message ?? "Job not found." };
 
-  const profit = (job.job_amount ?? 0) - (job.vendors_fee ?? 0) - amount;
+  // Same rule as job-actions.ts: no profit until a vendor fee is entered, and
+  // never for appointments or cancelled jobs.
+  const status = job.job_status?.trim().toLowerCase();
+  const profit =
+    job.vendors_fee === null || status === "appointment" || status === "cancelled"
+      ? null
+      : (job.job_amount ?? 0) - job.vendors_fee - amount;
 
   const { error } = await admin
     .from("jobs")

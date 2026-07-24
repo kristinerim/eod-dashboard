@@ -67,8 +67,12 @@ export default function JobForm({
   const isDispatchedSelected = jobStatus.trim().toLowerCase() === "dispatched";
   const needsTimeDispatched = isDispatchedSelected && !timeDispatched;
 
+  const isAppointmentSelected = jobStatus.trim().toLowerCase() === "appointment";
+  const isCancelledSelected = jobStatus.trim().toLowerCase() === "cancelled";
   const profitPreview =
-    (Number(jobAmount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
+    vendorsFee.trim() === "" || isAppointmentSelected || isCancelledSelected
+      ? null
+      : (Number(jobAmount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -188,7 +192,9 @@ export default function JobForm({
             </Field>
             <Field label="Profit">
               <div className="flex h-[34px] items-center rounded border border-black/10 bg-black/5 px-2 text-sm">
-                {profitPreview.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                {profitPreview === null
+                  ? "-"
+                  : profitPreview.toLocaleString("en-US", { style: "currency", currency: "USD" })}
               </div>
             </Field>
           </div>

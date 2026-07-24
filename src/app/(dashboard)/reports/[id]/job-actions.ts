@@ -56,6 +56,10 @@ function isCancelledJobStatus(status: string | null): boolean {
   return status?.trim().toLowerCase() === "cancelled";
 }
 
+function isAppointmentStatus(status: string | null): boolean {
+  return status?.trim().toLowerCase() === "appointment";
+}
+
 function validatePendingCompletionSubstatus(
   jobStatus: string | null,
   substatus: string | null
@@ -117,7 +121,14 @@ function jobFieldsFromForm(formData: FormData) {
   const job_amount = numberOrNull(formData.get("job_amount"));
   const vendors_fee = numberOrNull(formData.get("vendors_fee"));
   const refunded_to_client = numberOrNull(formData.get("refunded_to_client"));
-  const profit = (job_amount ?? 0) - (vendors_fee ?? 0) - (refunded_to_client ?? 0);
+  const job_status = strOrNull(formData.get("job_status"));
+
+  // Profit isn't meaningful until a vendor fee has actually been entered, and
+  // appointments/cancellations never have a real profit to report.
+  const profit =
+    vendors_fee === null || isAppointmentStatus(job_status) || isCancelledJobStatus(job_status)
+      ? null
+      : (job_amount ?? 0) - vendors_fee - (refunded_to_client ?? 0);
 
   return {
     agent: strOrNull(formData.get("agent")),
@@ -128,7 +139,7 @@ function jobFieldsFromForm(formData: FormData) {
     refunded_to_client,
     profit,
     vendor_name: strOrNull(formData.get("vendor_name")),
-    job_status: strOrNull(formData.get("job_status")),
+    job_status,
     eta_minutes: numberOrNull(formData.get("eta_minutes")),
     time_converted: datetimeLocalPHTToIso(formData.get("time_converted")),
     time_dispatched: datetimeLocalPHTToIso(formData.get("time_dispatched")),

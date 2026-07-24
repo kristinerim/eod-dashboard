@@ -82,10 +82,9 @@ export function summarizeJobs(jobs: JobSummaryInput[]): JobSummary {
   const platformCounts = new Map<string, { count: number; amount: number }>();
 
   for (const j of jobs) {
-    // Cancelled jobs keep all their data but shouldn't inflate profit totals.
-    if (!isCancelledStatus(j.job_status)) {
-      totalProfit += j.profit ?? 0;
-    }
+    // profit is only ever stored once a vendor fee is entered and the job is
+    // neither an appointment nor cancelled — see jobFieldsFromForm.
+    totalProfit += j.profit ?? 0;
     totalJobAmount += j.job_amount ?? 0;
     totalVendorFee += j.vendors_fee ?? 0;
 
