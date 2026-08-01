@@ -68,10 +68,12 @@ export default async function JobDetailPage({
         { label: "Job number", value: job.job_number ?? "-" },
         {
           label: "Vendor",
-          value: (
-            <span className={needsVendor(job.job_status, job.vendor_name) ? "text-red-600" : ""}>
-              {job.vendor_name ?? "-"}
+          value: needsVendor(job.job_status, job.vendor_name) ? (
+            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+              NO VENDOR - ACTION NEEDED
             </span>
+          ) : (
+            (job.vendor_name ?? "-")
           ),
         },
         { label: "Status", value: job.job_status ?? "-" },

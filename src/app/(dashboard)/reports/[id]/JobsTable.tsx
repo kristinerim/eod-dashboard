@@ -287,11 +287,17 @@ export default function JobsTable({
                 </td>
                 {COLUMNS.map((c) => (
                   <td key={c.key} className="whitespace-nowrap px-3 py-2">
-                    {c.currency
-                      ? formatCurrency(j[c.key] as number | null)
-                      : c.datetime
-                        ? formatDateTime(j[c.key] as string | null)
-                        : (j[c.key] as string | number | null) ?? "-"}
+                    {c.key === "vendor_name" && needsVendor(j) ? (
+                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                        NO VENDOR - ACTION NEEDED
+                      </span>
+                    ) : c.currency ? (
+                      formatCurrency(j[c.key] as number | null)
+                    ) : c.datetime ? (
+                      formatDateTime(j[c.key] as string | null)
+                    ) : (
+                      ((j[c.key] as string | number | null) ?? "-")
+                    )}
                   </td>
                 ))}
               </tr>
