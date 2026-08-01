@@ -174,6 +174,7 @@ function jobFieldsFromForm(formData: FormData) {
     vendor_name: strOrNull(formData.get("vendor_name")),
     job_status,
     eta_minutes: numberOrNull(formData.get("eta_minutes")),
+    appointment_at: datetimeLocalPHTToIso(formData.get("appointment_at")),
     time_converted: datetimeLocalPHTToIso(formData.get("time_converted")),
     time_dispatched: datetimeLocalPHTToIso(formData.get("time_dispatched")),
     state: strOrNull(formData.get("state")),

@@ -292,7 +292,15 @@ export default function JobForm({
             </Field>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Appointment date & time">
+              <input
+                name="appointment_at"
+                type="datetime-local"
+                defaultValue={isoToDatetimeLocalPHT(job?.appointment_at)}
+                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+              />
+            </Field>
             <Field label={isNewJob ? "Time converted (required)" : "Time converted"}>
               <input
                 name="time_converted"

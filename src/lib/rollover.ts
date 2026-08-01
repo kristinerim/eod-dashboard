@@ -3,12 +3,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { todayISO } from "@/lib/aggregate";
 
 /**
- * An appointment job with no vendor yet isn't tied to any real operational
- * day, so it rolls forward to today's report every day until a vendor is
- * assigned — otherwise it would stay stranded on whatever day it happened to
- * be created. Once a vendor is assigned it stops rolling and stays put until
- * it's dispatched, at which point job-actions.ts's dispatch-date move takes
- * over as the source of truth.
+ * A job in Appointment status isn't operational yet — dispatch is what makes
+ * it operational — so it isn't tied to any real day and keeps rolling
+ * forward to today's report every day, vendor or no vendor, until it's
+ * dispatched. At that point job-actions.ts's dispatch-date move takes over
+ * as the source of truth and this stops applying.
  *
  * Runs opportunistically whenever a dashboard/report page loads rather than
  * on a schedule — there's no background cron here.
@@ -31,7 +30,6 @@ export async function rolloverStaleAppointments(): Promise<void> {
     .from("jobs")
     .select("id, report_id")
     .eq("job_status", "Appointment")
-    .or("vendor_name.is.null,vendor_name.eq.")
     .in("report_id", pastReportIds)
     .order("row_number", { ascending: true });
 

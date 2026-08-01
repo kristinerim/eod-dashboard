@@ -24,6 +24,11 @@ function formatDateTime(d: string | null) {
   return new Date(d).toLocaleString("en-US", { timeZone: "Asia/Manila" });
 }
 
+/** Appointments with no vendor yet need dispatcher attention. */
+function needsVendor(status: string | null, vendorName: string | null): boolean {
+  return status?.trim().toLowerCase() === "appointment" && !vendorName;
+}
+
 export default async function JobDetailPage({
   params,
 }: {
@@ -61,7 +66,14 @@ export default async function JobDetailPage({
         { label: "Agent", value: job.agent ?? "-" },
         { label: "Dispatcher", value: job.dispatcher ?? "-" },
         { label: "Job number", value: job.job_number ?? "-" },
-        { label: "Vendor", value: job.vendor_name ?? "-" },
+        {
+          label: "Vendor",
+          value: (
+            <span className={needsVendor(job.job_status, job.vendor_name) ? "text-red-600" : ""}>
+              {job.vendor_name ?? "-"}
+            </span>
+          ),
+        },
         { label: "Status", value: job.job_status ?? "-" },
         { label: "Sub-status", value: job.pending_completion_substatus ?? "-" },
         { label: "Cancellation reason", value: job.cancellation_reason ?? "-" },
@@ -86,6 +98,7 @@ export default async function JobDetailPage({
       title: "Dispatch / ETA",
       fields: [
         { label: "ETA (minutes)", value: job.eta_minutes ?? "-" },
+        { label: "Appointment date & time", value: formatDateTime(job.appointment_at) },
         { label: "Time converted", value: formatDateTime(job.time_converted) },
         { label: "Time dispatched", value: formatDateTime(job.time_dispatched) },
         { label: "Dispatched / appt notes", value: job.dispatched_time ?? "-" },

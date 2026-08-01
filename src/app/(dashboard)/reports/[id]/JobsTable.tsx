@@ -24,6 +24,7 @@ export interface Job {
   pending_completion_substatus: string | null;
   cancellation_reason: string | null;
   eta_minutes: number | null;
+  appointment_at: string | null;
   time_converted: string | null;
   time_dispatched: string | null;
   dispatched_time: string | null;
@@ -61,6 +62,7 @@ const COLUMNS: Column[] = [
   { key: "pending_completion_substatus", label: "Sub-status" },
   { key: "cancellation_reason", label: "Cancellation reason" },
   { key: "eta_minutes", label: "ETA (min)" },
+  { key: "appointment_at", label: "Appointment date/time", datetime: true },
   { key: "time_converted", label: "Time converted", datetime: true },
   { key: "time_dispatched", label: "Time dispatched", datetime: true },
   { key: "state", label: "State" },
@@ -91,6 +93,11 @@ function formatCurrency(n: number | null) {
 function formatDateTime(d: string | null) {
   if (!d) return "-";
   return new Date(d).toLocaleString("en-US", { timeZone: "Asia/Manila" });
+}
+
+/** Appointments with no vendor yet need dispatcher attention. */
+function needsVendor(j: Job): boolean {
+  return j.job_status?.trim().toLowerCase() === "appointment" && !j.vendor_name;
 }
 
 export default function JobsTable({
@@ -244,7 +251,12 @@ export default function JobsTable({
           </thead>
           <tbody>
             {sorted.map((j) => (
-              <tr key={j.id} className="group border-t border-black/10 hover:bg-black/[0.03]">
+              <tr
+                key={j.id}
+                className={`group border-t border-black/10 hover:bg-black/[0.03] ${
+                  needsVendor(j) ? "text-red-600" : ""
+                }`}
+              >
                 <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-2 group-hover:bg-black/[0.03]">
                   <Link
                     href={`/reports/${reportId}/jobs/${j.id}`}
