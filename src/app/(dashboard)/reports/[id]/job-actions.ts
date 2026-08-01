@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { todayISO } from "@/lib/aggregate";
+import { dateInPHT, todayISO } from "@/lib/aggregate";
 import { getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profile";
 import { PENDING_COMPLETION_SUBSTATUSES } from "@/lib/constants";
 
@@ -121,6 +121,21 @@ function validateNewJobRequiredFields(fields: {
 
 type ActionResult = { success: true; id?: string } | { error: string };
 
+async function upsertReportForDate(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  reportDate: string
+): Promise<{ id: string } | { error: string }> {
+  const { data, error } = await supabase
+    .from("reports")
+    .upsert({ report_date: reportDate, uploaded_by: userId }, { onConflict: "report_date" })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error?.message ?? "Failed to resolve the report for that date." };
+  return { id: data.id };
+}
+
 export async function getOrCreateTodaysReport(): Promise<ActionResult> {
   const supabase = await createClient();
   const {
@@ -128,15 +143,11 @@ export async function getOrCreateTodaysReport(): Promise<ActionResult> {
   } = await supabase.auth.getUser();
   if (!user) return { error: "Not signed in." };
 
-  const { data, error } = await supabase
-    .from("reports")
-    .upsert({ report_date: todayISO(), uploaded_by: user.id }, { onConflict: "report_date" })
-    .select("id")
-    .single();
+  const resolved = await upsertReportForDate(supabase, user.id, todayISO());
+  if ("error" in resolved) return resolved;
 
-  if (error || !data) return { error: error?.message ?? "Failed to create today's report." };
   revalidatePath("/");
-  return { success: true, id: data.id };
+  return { success: true, id: resolved.id };
 }
 
 function jobFieldsFromForm(formData: FormData) {
@@ -217,14 +228,23 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     }
   }
 
+  // A job counts toward the day it was dispatched, not the day it was added —
+  // if a dispatch time is already known, file it under that date's report.
+  let targetReportId = reportId;
+  if (fields.time_dispatched) {
+    const resolved = await upsertReportForDate(supabase, user.id, dateInPHT(fields.time_dispatched));
+    if ("error" in resolved) return { error: resolved.error };
+    targetReportId = resolved.id;
+  }
+
   const { count } = await supabase
     .from("jobs")
     .select("id", { count: "exact", head: true })
-    .eq("report_id", reportId);
+    .eq("report_id", targetReportId);
 
   const { error } = await supabase.from("jobs").insert({
     ...fields,
-    report_id: reportId,
+    report_id: targetReportId,
     row_number: (count ?? 0) + 1,
     source: "manual",
     created_by: user.id,
@@ -236,7 +256,8 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
   });
 
   if (error) return { error: error.message };
-  revalidatePath(`/reports/${reportId}`);
+  revalidatePath(`/reports/${targetReportId}`);
+  if (targetReportId !== reportId) revalidatePath(`/reports/${reportId}`);
   revalidatePath("/");
   return { success: true };
 }
@@ -353,13 +374,44 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
       : new Date().toISOString()
     : null;
 
+  // A job counts toward the day it was dispatched, not the day it was
+  // created or converted — whenever the dispatch time changes, move the job
+  // to that date's report so it's reflected everywhere.
+  let targetReportId = reportId;
+  let row_number: number | undefined;
+  if (fields.time_dispatched) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not signed in." };
+
+    const resolved = await upsertReportForDate(supabase, user.id, dateInPHT(fields.time_dispatched));
+    if ("error" in resolved) return { error: resolved.error };
+    targetReportId = resolved.id;
+
+    if (targetReportId !== reportId) {
+      const { count } = await supabase
+        .from("jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("report_id", targetReportId);
+      row_number = (count ?? 0) + 1;
+    }
+  }
+
   const { error } = await supabase
     .from("jobs")
-    .update({ ...fields, pending_completion_at, completed_at, cancelled_at })
+    .update({
+      ...fields,
+      pending_completion_at,
+      completed_at,
+      cancelled_at,
+      ...(targetReportId !== reportId ? { report_id: targetReportId, row_number } : {}),
+    })
     .eq("id", jobId);
 
   if (error) return { error: error.message };
-  revalidatePath(`/reports/${reportId}`);
+  revalidatePath(`/reports/${targetReportId}`);
+  if (targetReportId !== reportId) revalidatePath(`/reports/${reportId}`);
   revalidatePath("/");
   return { success: true };
 }
