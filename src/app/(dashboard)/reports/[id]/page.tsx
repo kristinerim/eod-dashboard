@@ -4,6 +4,7 @@ import JobsTable, { type Job } from "./JobsTable";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import { summarizeJobs, todayISO } from "@/lib/aggregate";
 import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/profile";
+import { rolloverStaleAppointments } from "@/lib/rollover";
 
 function formatCurrency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -24,6 +25,8 @@ export default async function ReportDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  await rolloverStaleAppointments();
+
   const supabase = await createClient();
 
   const { data: report } = await supabase

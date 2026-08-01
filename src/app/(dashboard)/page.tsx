@@ -14,6 +14,7 @@ import RealtimeRefresh from "@/components/RealtimeRefresh";
 import DispatchedList, { type DispatchedJob } from "@/components/DispatchedList";
 import NeedsAttentionList, { type NeedsAttentionJob } from "@/components/NeedsAttentionList";
 import AddTodayJobButton from "./AddTodayJobButton";
+import { rolloverStaleAppointments } from "@/lib/rollover";
 
 function formatCurrency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -42,6 +43,8 @@ function Card({ label, value }: { label: string; value: string | number }) {
 }
 
 export default async function DashboardPage() {
+  await rolloverStaleAppointments();
+
   const supabase = await createClient();
   const { data: reports, error } = await supabase
     .from("reports")
