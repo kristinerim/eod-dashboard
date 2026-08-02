@@ -89,6 +89,11 @@ export const TEAM_MEMBERS = [
   "Paschal Chinaemelum Umeh",
   "Justine Abel Bulawan",
   "Fredrick Damian Chukwu",
+  "Lesther Flores",
+  "Alex Jr Abao",
+  "Levie Gajo",
+  "Justin Clyde Polistico",
+  "Joshua Dedomo",
 ].sort((a, b) => a.localeCompare(b));
 
 export const US_STATE_CODES = [
