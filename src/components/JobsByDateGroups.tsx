@@ -13,13 +13,22 @@ export interface GroupedJob {
   cancellation_reason?: string | null;
   job_amount?: number | null;
   refunded_to_client?: number | null;
+  customer_charged_via?: string | null;
   groupDate: string;
   sortKey: number;
 }
 
-/** Cancelled jobs that were charged but not yet (fully) refunded need follow-up. */
+/**
+ * Cancelled jobs that were charged but not yet (fully) refunded need
+ * follow-up. An empty Charged Via means the customer was never actually
+ * charged, so no refund is owed regardless of job_amount.
+ */
 function needsRefund(j: GroupedJob): boolean {
-  return (j.job_amount ?? 0) > 0 && (j.refunded_to_client ?? 0) < (j.job_amount ?? 0);
+  return (
+    !!j.customer_charged_via &&
+    (j.job_amount ?? 0) > 0 &&
+    (j.refunded_to_client ?? 0) < (j.job_amount ?? 0)
+  );
 }
 
 function formatDate(d: string) {

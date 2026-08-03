@@ -9,7 +9,7 @@ export default async function CancelledJobsPage() {
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, profit, cancellation_reason, cancelled_at, job_amount, refunded_to_client"
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, profit, cancellation_reason, cancelled_at, job_amount, refunded_to_client, customer_charged_via"
     )
     .eq("job_status", "Cancelled");
 
