@@ -82,9 +82,8 @@ export default function JobForm({
     (etaMinutes.trim() === "" || etaMinutes.trim() === originalEta.trim());
 
   const isAppointmentSelected = jobStatus.trim().toLowerCase() === "appointment";
-  const isCancelledSelected = jobStatus.trim().toLowerCase() === "cancelled";
   const profitPreview =
-    vendorsFee.trim() === "" || isAppointmentSelected || isCancelledSelected
+    vendorsFee.trim() === "" || isAppointmentSelected
       ? null
       : (Number(jobAmount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
 

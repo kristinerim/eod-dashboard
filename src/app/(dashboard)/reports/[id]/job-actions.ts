@@ -177,9 +177,11 @@ function jobFieldsFromForm(formData: FormData) {
   const job_status = strOrNull(formData.get("job_status"));
 
   // Profit isn't meaningful until a vendor fee has actually been entered, and
-  // appointments/cancellations never have a real profit to report.
+  // appointments never have a real profit to report. Cancelled jobs DO get a
+  // real (possibly negative) profit once a vendor fee is entered — a vendor
+  // fee paid out before the cancellation is a genuine loss, not $0.
   const profit =
-    vendors_fee === null || isAppointmentStatus(job_status) || isCancelledJobStatus(job_status)
+    vendors_fee === null || isAppointmentStatus(job_status)
       ? null
       : (job_amount ?? 0) - vendors_fee - (refunded_to_client ?? 0);
 

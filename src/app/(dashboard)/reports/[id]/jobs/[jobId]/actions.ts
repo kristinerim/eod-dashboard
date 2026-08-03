@@ -36,7 +36,7 @@ export async function cancelJob(
   const admin = createAdminClient();
   const { data: existing } = await admin
     .from("jobs")
-    .select("job_status, cancelled_at")
+    .select("job_status, cancelled_at, job_amount, vendors_fee, refunded_to_client")
     .eq("id", jobId)
     .single();
 
@@ -45,10 +45,17 @@ export async function cancelJob(
     ? existing.cancelled_at
     : new Date().toISOString();
 
+  // No profit until a vendor fee is entered. If one already was — a vendor
+  // fee paid out before the cancellation is a genuine (possibly negative)
+  // loss, not $0 — so cancelling doesn't wipe it out.
+  const profit =
+    existing?.vendors_fee == null
+      ? null
+      : (existing.job_amount ?? 0) - existing.vendors_fee - (existing.refunded_to_client ?? 0);
+
   const { error } = await admin
     .from("jobs")
-    // Cancelled jobs never have a real profit to report.
-    .update({ job_status: "Cancelled", cancellation_reason: reason.trim(), cancelled_at, profit: null })
+    .update({ job_status: "Cancelled", cancellation_reason: reason.trim(), cancelled_at, profit })
     .eq("id", jobId);
   if (error) return { error: error.message };
 
@@ -74,10 +81,11 @@ export async function refundJob(
   if (fetchError || !job) return { error: fetchError?.message ?? "Job not found." };
 
   // Same rule as job-actions.ts: no profit until a vendor fee is entered, and
-  // never for appointments or cancelled jobs.
+  // never for appointments. Cancelled jobs with a vendor fee still get a
+  // real (possibly negative) profit — that fee was a genuine loss.
   const status = job.job_status?.trim().toLowerCase();
   const profit =
-    job.vendors_fee === null || status === "appointment" || status === "cancelled"
+    job.vendors_fee === null || status === "appointment"
       ? null
       : (job.job_amount ?? 0) - job.vendors_fee - amount;
 
