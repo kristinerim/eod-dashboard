@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/profile";
+import { needsRefund } from "@/lib/aggregate";
 import type { Job } from "../../JobsTable";
 import JobDetailActions from "./JobDetailActions";
 
@@ -29,24 +30,6 @@ function needsVendor(status: string | null, vendorName: string | null): boolean 
   return status?.trim().toLowerCase() === "appointment" && !vendorName;
 }
 
-/**
- * Cancelled jobs that were charged but not yet (fully) refunded need
- * follow-up. An empty Charged Via means the customer was never actually
- * charged, so no refund is owed regardless of job_amount.
- */
-function needsRefund(
-  status: string | null,
-  jobAmount: number | null,
-  refundedToClient: number | null,
-  chargedVia: string | null
-): boolean {
-  return (
-    status?.trim().toLowerCase() === "cancelled" &&
-    !!chargedVia &&
-    (jobAmount ?? 0) > 0 &&
-    (refundedToClient ?? 0) < (jobAmount ?? 0)
-  );
-}
 
 export default async function JobDetailPage({
   params,
@@ -111,12 +94,7 @@ export default async function JobDetailPage({
         { label: "Vendor fee", value: formatCurrency(job.vendors_fee) },
         {
           label: "Refunded to client",
-          value: needsRefund(
-            job.job_status,
-            job.job_amount,
-            job.refunded_to_client,
-            job.customer_charged_via
-          ) ? (
+          value: needsRefund(job) ? (
             <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
               {job.refunded_to_client ? `${formatCurrency(job.refunded_to_client)} - ` : ""}
               REFUND NEEDED

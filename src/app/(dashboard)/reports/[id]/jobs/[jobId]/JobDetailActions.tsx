@@ -40,10 +40,13 @@ export default function JobDetailActions({
   }
 
   function handleRefund() {
-    const input = prompt("Refund amount ($):", job.refunded_to_client?.toString() ?? "0");
+    const alreadyRefunded = job.refunded_to_client
+      ? ` (${job.refunded_to_client} already refunded so far)`
+      : "";
+    const input = prompt(`Refund amount to process now ($)${alreadyRefunded}:`, "");
     if (input === null) return;
     const amount = Number(input);
-    if (Number.isNaN(amount) || amount < 0) return setError("Enter a valid refund amount.");
+    if (Number.isNaN(amount) || amount <= 0) return setError("Enter a valid refund amount.");
     setError(null);
     startTransition(async () => {
       const result = await refundJob(job.id, reportId, amount);

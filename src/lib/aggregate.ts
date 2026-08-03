@@ -78,6 +78,27 @@ export function isEtaTrackedJob(job: EtaJobInput): boolean {
   );
 }
 
+export interface RefundCheckInput {
+  job_status: string | null;
+  job_amount: number | null;
+  refunded_to_client: number | null;
+  customer_charged_via: string | null;
+}
+
+/**
+ * Cancelled jobs that were charged but not yet (fully) refunded need
+ * follow-up. An empty Charged Via means the customer was never actually
+ * charged, so no refund is owed regardless of job_amount.
+ */
+export function needsRefund(job: RefundCheckInput): boolean {
+  return (
+    isCancelledStatus(job.job_status) &&
+    !!job.customer_charged_via &&
+    (job.job_amount ?? 0) > 0 &&
+    (job.refunded_to_client ?? 0) < (job.job_amount ?? 0)
+  );
+}
+
 export function summarizeJobs(jobs: JobSummaryInput[]): JobSummary {
   let totalProfit = 0;
   let totalJobAmount = 0;

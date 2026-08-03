@@ -5,6 +5,7 @@ import {
   isNeedsAttentionStatus,
   isOpenJobStatus,
   monthRangeFor,
+  needsRefund,
   summarizeJobs,
   todayISO,
   weekRangeFor,
@@ -13,6 +14,7 @@ import {
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import DispatchedList, { type DispatchedJob } from "@/components/DispatchedList";
 import NeedsAttentionList, { type NeedsAttentionJob } from "@/components/NeedsAttentionList";
+import RefundRequiredList, { type RefundRequiredJob } from "@/components/RefundRequiredList";
 import AddTodayJobButton from "./AddTodayJobButton";
 import { rolloverStaleAppointments } from "@/lib/rollover";
 
@@ -125,6 +127,21 @@ export default async function DashboardPage() {
     (needsAttentionData ?? []) as (NeedsAttentionJob & { job_status: string | null })[]
   ).filter((j) => isNeedsAttentionStatus(j.job_status));
 
+  const { data: cancelledData } = await supabase
+    .from("jobs")
+    .select(
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_amount, refunded_to_client, cancellation_reason, job_status, customer_charged_via"
+    )
+    .in(
+      "report_id",
+      reports.map((r) => r.id)
+    )
+    .eq("job_status", "Cancelled");
+  const refundRequiredJobs: RefundRequiredJob[] = ((cancelledData ?? []) as (RefundRequiredJob & {
+    job_status: string | null;
+    customer_charged_via: string | null;
+  })[]).filter((j) => needsRefund(j));
+
   return (
     <div className="space-y-8">
       <RealtimeRefresh tables={["jobs", "reports"]} />
@@ -140,6 +157,8 @@ export default async function DashboardPage() {
         <Card label="Job amount" value={formatCurrency(todaySummary.totalJobAmount)} />
         <Card label="Vendor payment" value={formatCurrency(todaySummary.totalVendorFee)} />
       </div>
+
+      <RefundRequiredList jobs={refundRequiredJobs} />
 
       <NeedsAttentionList jobs={needsAttentionJobs} />
 

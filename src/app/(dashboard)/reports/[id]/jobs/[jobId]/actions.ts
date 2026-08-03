@@ -63,6 +63,9 @@ export async function cancelJob(
   return { success: true };
 }
 
+// `amount` is a payment being processed now, not the new running total — it
+// adds to whatever has already been refunded, so partial refunds recorded
+// separately (e.g. by different team members) accumulate correctly.
 export async function refundJob(
   jobId: string,
   reportId: string,
@@ -70,15 +73,17 @@ export async function refundJob(
 ): Promise<ActionResult> {
   const user = await requireUser();
   if (!user) return { error: "Not signed in." };
-  if (Number.isNaN(amount) || amount < 0) return { error: "Enter a valid refund amount." };
+  if (Number.isNaN(amount) || amount <= 0) return { error: "Enter a valid refund amount." };
 
   const admin = createAdminClient();
   const { data: job, error: fetchError } = await admin
     .from("jobs")
-    .select("job_amount, vendors_fee, job_status")
+    .select("job_amount, vendors_fee, job_status, refunded_to_client")
     .eq("id", jobId)
     .single();
   if (fetchError || !job) return { error: fetchError?.message ?? "Job not found." };
+
+  const refunded_to_client = (job.refunded_to_client ?? 0) + amount;
 
   // Same rule as job-actions.ts: no profit until a vendor fee is entered, and
   // never for appointments. Cancelled jobs with a vendor fee still get a
@@ -87,11 +92,11 @@ export async function refundJob(
   const profit =
     job.vendors_fee === null || status === "appointment"
       ? null
-      : (job.job_amount ?? 0) - job.vendors_fee - amount;
+      : (job.job_amount ?? 0) - job.vendors_fee - refunded_to_client;
 
   const { error } = await admin
     .from("jobs")
-    .update({ refunded_to_client: amount, profit })
+    .update({ refunded_to_client, profit })
     .eq("id", jobId);
   if (error) return { error: error.message };
 

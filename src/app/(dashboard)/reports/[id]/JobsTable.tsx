@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import JobForm from "./JobForm";
 import { deleteJob } from "./job-actions";
+import { needsRefund } from "@/lib/aggregate";
 
 export interface Job {
   id: string;
@@ -100,19 +101,6 @@ function needsVendor(j: Job): boolean {
   return j.job_status?.trim().toLowerCase() === "appointment" && !j.vendor_name;
 }
 
-/**
- * Cancelled jobs that were charged but not yet (fully) refunded need
- * follow-up. An empty Charged Via means the customer was never actually
- * charged, so no refund is owed regardless of job_amount.
- */
-function needsRefund(j: Job): boolean {
-  return (
-    j.job_status?.trim().toLowerCase() === "cancelled" &&
-    !!j.customer_charged_via &&
-    (j.job_amount ?? 0) > 0 &&
-    (j.refunded_to_client ?? 0) < (j.job_amount ?? 0)
-  );
-}
 
 export default function JobsTable({
   jobs,
