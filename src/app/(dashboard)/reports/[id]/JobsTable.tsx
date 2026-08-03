@@ -100,6 +100,15 @@ function needsVendor(j: Job): boolean {
   return j.job_status?.trim().toLowerCase() === "appointment" && !j.vendor_name;
 }
 
+/** Cancelled jobs that were charged but not yet (fully) refunded need follow-up. */
+function needsRefund(j: Job): boolean {
+  return (
+    j.job_status?.trim().toLowerCase() === "cancelled" &&
+    (j.job_amount ?? 0) > 0 &&
+    (j.refunded_to_client ?? 0) < (j.job_amount ?? 0)
+  );
+}
+
 export default function JobsTable({
   jobs,
   reportId,
@@ -254,7 +263,7 @@ export default function JobsTable({
               <tr
                 key={j.id}
                 className={`group border-t border-black/10 hover:bg-black/[0.03] ${
-                  needsVendor(j) ? "text-red-600" : ""
+                  needsVendor(j) || needsRefund(j) ? "text-red-600" : ""
                 }`}
               >
                 <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-2 group-hover:bg-black/[0.03]">

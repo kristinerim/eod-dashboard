@@ -11,8 +11,15 @@ export interface GroupedJob {
   customer_phone: string | null;
   profit: number | null;
   cancellation_reason?: string | null;
+  job_amount?: number | null;
+  refunded_to_client?: number | null;
   groupDate: string;
   sortKey: number;
+}
+
+/** Cancelled jobs that were charged but not yet (fully) refunded need follow-up. */
+function needsRefund(j: GroupedJob): boolean {
+  return (j.job_amount ?? 0) > 0 && (j.refunded_to_client ?? 0) < (j.job_amount ?? 0);
 }
 
 function formatDate(d: string) {
@@ -82,7 +89,12 @@ export default function JobsByDateGroups({
               </thead>
               <tbody>
                 {dateJobs.map((job) => (
-                  <tr key={job.id} className="border-t border-black/10 hover:bg-black/[0.03]">
+                  <tr
+                    key={job.id}
+                    className={`border-t border-black/10 hover:bg-black/[0.03] ${
+                      needsRefund(job) ? "text-red-600" : ""
+                    }`}
+                  >
                     <td className="px-4 py-2">
                       <Link
                         href={`/reports/${job.report_id}/jobs/${job.id}`}
