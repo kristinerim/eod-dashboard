@@ -107,6 +107,26 @@ function validateCoreRequiredFields(fields: {
   return null;
 }
 
+// Job numbers must be unique across the whole system, not just within a
+// report — checked here (defense-in-depth alongside any future insertion
+// path, e.g. a bulk import, which should run this same check).
+async function validateUniqueJobNumber(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  jobNumber: string | null,
+  excludeJobId?: string
+): Promise<string | null> {
+  if (!jobNumber) return null;
+
+  let query = supabase.from("jobs").select("id", { count: "exact", head: true }).eq("job_number", jobNumber);
+  if (excludeJobId) query = query.neq("id", excludeJobId);
+
+  const { count } = await query;
+  if (count && count > 0) {
+    return "This Job ID already exists. Duplicate Job IDs are not allowed.";
+  }
+  return null;
+}
+
 // Required only when creating a new job — these fields didn't exist before,
 // so most historical jobs don't have them, and requiring them on every edit
 // would block editing anything created before this feature shipped.
@@ -206,6 +226,9 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
 
   const newJobError = validateNewJobRequiredFields(fields);
   if (newJobError) return { error: newJobError };
+
+  const duplicateJobNumberError = await validateUniqueJobNumber(supabase, fields.job_number);
+  if (duplicateJobNumberError) return { error: duplicateJobNumberError };
 
   const timeDispatchedError = validateTimeDispatchedRequired(
     fields.job_status,
@@ -323,6 +346,9 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
 
   const coreError = validateCoreRequiredFields(fields);
   if (coreError) return { error: coreError };
+
+  const duplicateJobNumberError = await validateUniqueJobNumber(supabase, fields.job_number, jobId);
+  if (duplicateJobNumberError) return { error: duplicateJobNumberError };
 
   const timeDispatchedError = validateTimeDispatchedRequired(
     fields.job_status,
