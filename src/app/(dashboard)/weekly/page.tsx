@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { summarizeJobs, weekRangeFor, type JobSummaryInput } from "@/lib/aggregate";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 function formatCurrency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -33,16 +34,18 @@ export default async function WeeklyPage() {
     return <p className="text-sm text-black/70">No reports yet.</p>;
   }
 
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select("report_id, profit, job_amount, vendors_fee, job_status, customer_charged_via")
-    .in(
-      "report_id",
-      reports.map((r) => r.id)
-    );
+  const jobs = await fetchAllRows<JobRow>(() =>
+    supabase
+      .from("jobs")
+      .select("report_id, profit, job_amount, vendors_fee, job_status, customer_charged_via")
+      .in(
+        "report_id",
+        reports.map((r) => r.id)
+      )
+  );
 
   const jobsByReport = new Map<string, JobRow[]>();
-  for (const j of (jobs ?? []) as JobRow[]) {
+  for (const j of jobs) {
     const list = jobsByReport.get(j.report_id) ?? [];
     list.push(j);
     jobsByReport.set(j.report_id, list);

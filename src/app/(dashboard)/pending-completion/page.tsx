@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import ElapsedBadge from "@/components/ElapsedBadge";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 const STATUS = "Service Rendered – Pending Completion";
 
@@ -21,14 +22,14 @@ interface PendingJob {
 export default async function PendingCompletionPage() {
   const supabase = await createClient();
 
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, pending_completion_at, pending_completion_substatus"
-    )
-    .eq("job_status", STATUS);
-
-  const pendingJobs = (jobs ?? []) as PendingJob[];
+  const pendingJobs = await fetchAllRows<PendingJob>(() =>
+    supabase
+      .from("jobs")
+      .select(
+        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, pending_completion_at, pending_completion_substatus"
+      )
+      .eq("job_status", STATUS)
+  );
 
   const sorted = [...pendingJobs].sort((a, b) => {
     const aTime = a.pending_completion_at ? new Date(a.pending_completion_at).getTime() : 0;

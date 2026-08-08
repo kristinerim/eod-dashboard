@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { todayISO } from "@/lib/aggregate";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 /**
  * A job in Appointment status isn't operational yet — dispatch is what makes
@@ -26,14 +27,16 @@ export async function rolloverStaleAppointments(): Promise<void> {
   const pastReportIds = (pastReports ?? []).map((r) => r.id);
   if (pastReportIds.length === 0) return;
 
-  const { data: staleJobs } = await admin
-    .from("jobs")
-    .select("id, report_id")
-    .eq("job_status", "Appointment")
-    .in("report_id", pastReportIds)
-    .order("row_number", { ascending: true });
+  const staleJobs = await fetchAllRows<{ id: string; report_id: string }>(() =>
+    admin
+      .from("jobs")
+      .select("id, report_id")
+      .eq("job_status", "Appointment")
+      .in("report_id", pastReportIds)
+      .order("row_number", { ascending: true })
+  );
 
-  if (!staleJobs || staleJobs.length === 0) return;
+  if (staleJobs.length === 0) return;
 
   const { data: todayReport, error: todayReportError } = await admin
     .from("reports")

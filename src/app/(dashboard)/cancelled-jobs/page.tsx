@@ -2,18 +2,20 @@ import { createClient } from "@/lib/supabase/server";
 import { dateInPHT } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import JobsByDateGroups, { type GroupedJob } from "@/components/JobsByDateGroups";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 export default async function CancelledJobsPage() {
   const supabase = await createClient();
 
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, profit, cancellation_reason, cancelled_at, job_amount, refunded_to_client, customer_charged_via"
-    )
-    .eq("job_status", "Cancelled");
-
-  const jobList = jobs ?? [];
+  const jobList = await fetchAllRows<Omit<GroupedJob, "groupDate" | "sortKey"> & { cancelled_at: string | null }>(
+    () =>
+      supabase
+        .from("jobs")
+        .select(
+          "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, profit, cancellation_reason, cancelled_at, job_amount, refunded_to_client, customer_charged_via"
+        )
+        .eq("job_status", "Cancelled")
+  );
   const reportIds = Array.from(new Set(jobList.map((j) => j.report_id)));
   const { data: reports } = await supabase
     .from("reports")

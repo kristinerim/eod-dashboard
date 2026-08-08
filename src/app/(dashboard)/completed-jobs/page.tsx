@@ -2,18 +2,20 @@ import { createClient } from "@/lib/supabase/server";
 import { dateInPHT } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import JobsByDateGroups, { type GroupedJob } from "@/components/JobsByDateGroups";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 export default async function CompletedJobsPage() {
   const supabase = await createClient();
 
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, profit, completed_at"
-    )
-    .eq("job_status", "Completed");
-
-  const jobList = jobs ?? [];
+  const jobList = await fetchAllRows<Omit<GroupedJob, "groupDate" | "sortKey"> & { completed_at: string | null }>(
+    () =>
+      supabase
+        .from("jobs")
+        .select(
+          "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, profit, completed_at"
+        )
+        .eq("job_status", "Completed")
+  );
   const reportIds = Array.from(new Set(jobList.map((j) => j.report_id)));
   const { data: reports } = await supabase
     .from("reports")

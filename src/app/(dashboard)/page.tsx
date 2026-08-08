@@ -17,6 +17,7 @@ import NeedsAttentionList, { type NeedsAttentionJob } from "@/components/NeedsAt
 import RefundRequiredList, { type RefundRequiredJob } from "@/components/RefundRequiredList";
 import AddTodayJobButton from "./AddTodayJobButton";
 import { rolloverStaleAppointments } from "@/lib/rollover";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 function formatCurrency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -66,16 +67,16 @@ export default async function DashboardPage() {
     );
   }
 
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select("report_id, profit, job_amount, vendors_fee, job_status, customer_charged_via")
-    .in(
-      "report_id",
-      reports.map((r) => r.id)
-    );
+  const reportIds = reports.map((r) => r.id);
+  const jobs = await fetchAllRows<JobRow>(() =>
+    supabase
+      .from("jobs")
+      .select("report_id, profit, job_amount, vendors_fee, job_status, customer_charged_via")
+      .in("report_id", reportIds)
+  );
 
   const jobsByReport = new Map<string, JobRow[]>();
-  for (const j of (jobs ?? []) as JobRow[]) {
+  for (const j of jobs) {
     const list = jobsByReport.get(j.report_id) ?? [];
     list.push(j);
     jobsByReport.set(j.report_id, list);
@@ -102,45 +103,39 @@ export default async function DashboardPage() {
   const incompleteWeek = weekJobs.filter((j) => isOpenJobStatus(j.job_status)).length;
   const incompleteMonth = monthJobs.filter((j) => isOpenJobStatus(j.job_status)).length;
 
-  const { data: dispatchedData } = await supabase
-    .from("jobs")
-    .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, time_dispatched, eta_minutes"
-    )
-    .in(
-      "report_id",
-      reports.map((r) => r.id)
-    )
-    .not("eta_minutes", "is", null);
-  const dispatchedJobs: DispatchedJob[] = ((dispatchedData ?? []) as DispatchedJob[]).filter((j) =>
-    isEtaTrackedJob(j)
+  const dispatchedData = await fetchAllRows<DispatchedJob>(() =>
+    supabase
+      .from("jobs")
+      .select(
+        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, time_dispatched, eta_minutes"
+      )
+      .in("report_id", reportIds)
+      .not("eta_minutes", "is", null)
+  );
+  const dispatchedJobs: DispatchedJob[] = dispatchedData.filter((j) => isEtaTrackedJob(j));
+
+  const needsAttentionData = await fetchAllRows<NeedsAttentionJob & { job_status: string | null }>(() =>
+    supabase
+      .from("jobs")
+      .select("id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status")
+      .in("report_id", reportIds)
+  );
+  const needsAttentionJobs: NeedsAttentionJob[] = needsAttentionData.filter((j) =>
+    isNeedsAttentionStatus(j.job_status)
   );
 
-  const { data: needsAttentionData } = await supabase
-    .from("jobs")
-    .select("id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status")
-    .in(
-      "report_id",
-      reports.map((r) => r.id)
-    );
-  const needsAttentionJobs: NeedsAttentionJob[] = (
-    (needsAttentionData ?? []) as (NeedsAttentionJob & { job_status: string | null })[]
-  ).filter((j) => isNeedsAttentionStatus(j.job_status));
-
-  const { data: cancelledData } = await supabase
-    .from("jobs")
-    .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_amount, refunded_to_client, cancellation_reason, job_status, customer_charged_via"
-    )
-    .in(
-      "report_id",
-      reports.map((r) => r.id)
-    )
-    .eq("job_status", "Cancelled");
-  const refundRequiredJobs: RefundRequiredJob[] = ((cancelledData ?? []) as (RefundRequiredJob & {
-    job_status: string | null;
-    customer_charged_via: string | null;
-  })[]).filter((j) => needsRefund(j));
+  const cancelledData = await fetchAllRows<
+    RefundRequiredJob & { job_status: string | null; customer_charged_via: string | null }
+  >(() =>
+    supabase
+      .from("jobs")
+      .select(
+        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_amount, refunded_to_client, cancellation_reason, job_status, customer_charged_via"
+      )
+      .in("report_id", reportIds)
+      .eq("job_status", "Cancelled")
+  );
+  const refundRequiredJobs: RefundRequiredJob[] = cancelledData.filter((j) => needsRefund(j));
 
   return (
     <div className="space-y-8">

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isEtaTrackedJob } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import DispatchedByDate, { type OpenJob } from "@/components/DispatchedByDate";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 export default async function DispatchedPage() {
   const supabase = await createClient();
@@ -15,19 +16,21 @@ export default async function DispatchedPage() {
     return <p className="text-sm text-black/70">No reports yet.</p>;
   }
 
-  const { data: jobs } = await supabase
-    .from("jobs")
-    .select(
-      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, time_dispatched, eta_minutes"
-    )
-    .in(
-      "report_id",
-      reports.map((r) => r.id)
-    );
+  const jobs = await fetchAllRows<Omit<OpenJob, "report_date">>(() =>
+    supabase
+      .from("jobs")
+      .select(
+        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, time_dispatched, eta_minutes"
+      )
+      .in(
+        "report_id",
+        reports.map((r) => r.id)
+      )
+  );
 
   const reportDateById = new Map(reports.map((r) => [r.id, r.report_date]));
 
-  const openJobs: OpenJob[] = (jobs ?? [])
+  const openJobs: OpenJob[] = jobs
     .filter((j) => isEtaTrackedJob(j))
     .map((j) => ({ ...j, report_date: reportDateById.get(j.report_id)! }));
 
