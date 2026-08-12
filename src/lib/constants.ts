@@ -94,6 +94,11 @@ export const TEAM_MEMBERS = [
   "Levie Gajo",
   "Justin Clyde Polistico",
   "Joshua Dedomo",
+  "Rico Mirafuentes Ranoco",
+  "Onyssa Espinosa",
+  "Pervy Jane Aliño",
+  "Krizyl Chloe Tan",
+  "Muhammad Zeeshan",
 ].sort((a, b) => a.localeCompare(b));
 
 export const US_STATE_CODES = [
