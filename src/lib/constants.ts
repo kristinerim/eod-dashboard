@@ -99,6 +99,18 @@ export const TEAM_MEMBERS = [
   "Pervy Jane Aliño",
   "Krizyl Chloe Tan",
   "Muhammad Zeeshan",
+  "Alfred Mendowaz Saidu",
+  "Theophilus Franklin Stemn",
+  "Ani Emeka Manuel",
+  "Pamela Nortey",
+  "Raphael Omondi Aloo",
+  "Jillian Gayle Tabon",
+  "Serget Joy Sepiacan",
+  "Lea Leal Carson",
+  "Kheena Mae Acedilla",
+  "Rhlyn Eddio-Amango",
+  "Michael Tosin",
+  "Meccael Segundo",
 ].sort((a, b) => a.localeCompare(b));
 
 export const US_STATE_CODES = [
