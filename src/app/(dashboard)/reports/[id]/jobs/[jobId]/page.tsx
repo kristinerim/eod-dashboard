@@ -4,7 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/profile";
 import { needsRefund } from "@/lib/aggregate";
 import type { Job } from "../../JobsTable";
+import type { Invoice } from "../../../../invoices/InvoicesTable";
 import JobDetailActions from "./JobDetailActions";
+import JobInvoicesSection from "./JobInvoicesSection";
 
 function formatCurrency(n: number | null) {
   if (n === null) return "-";
@@ -60,11 +62,37 @@ export default async function JobDetailPage({
   const canDelete = isSupervisor(profile?.role);
   const agentOptions = await getAgentNameOptions();
 
+  let leadLink: { id: string; leadNumber: string } | null = null;
+  if (job.lead_id) {
+    const { data: lead } = await supabase
+      .from("leads")
+      .select("id, lead_number")
+      .eq("id", job.lead_id)
+      .single();
+    if (lead) leadLink = { id: lead.id, leadNumber: lead.lead_number };
+  }
+
+  const { data: invoices } = await supabase
+    .from("invoices")
+    .select("*")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: false });
+
   const sections: { title: string; fields: { label: string; value: React.ReactNode }[] }[] = [
     {
       title: "Job",
       fields: [
         { label: "Row #", value: job.row_number ?? "-" },
+        {
+          label: "Lead",
+          value: leadLink ? (
+            <Link href={`/leads/${leadLink.id}`} className="underline">
+              {leadLink.leadNumber}
+            </Link>
+          ) : (
+            "-"
+          ),
+        },
         { label: "Agent", value: job.agent ?? "-" },
         { label: "Dispatcher", value: job.dispatcher ?? "-" },
         { label: "Job number", value: job.job_number ?? "-" },
@@ -172,6 +200,19 @@ export default async function JobDetailPage({
           </div>
         </div>
       ))}
+
+      <JobInvoicesSection
+        job={{
+          id: job.id,
+          job_number: job.job_number,
+          customer_name: job.customer_name,
+          customer_phone: job.customer_phone,
+          state: job.state,
+          job_amount: job.job_amount,
+          notes: job.notes,
+        }}
+        invoices={(invoices ?? []) as Invoice[]}
+      />
     </div>
   );
 }

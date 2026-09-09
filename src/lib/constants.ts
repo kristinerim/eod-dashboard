@@ -138,6 +138,18 @@ export const ROLE_LABELS: Record<string, string> = {
   agent: "Agent",
 };
 
+export const LEAD_DISPOSITIONS = [
+  "Price Too High",
+  "Shopping Around",
+  "No Answer",
+  "Customer Declined",
+  "Out of Coverage",
+  "Follow-Up Needed",
+  "Other",
+];
+
+export const INVOICE_STATUSES = ["Draft", "Sent", "Paid", "Partially Paid", "Voided", "Refunded"];
+
 export const PENDING_COMPLETION_SUBSTATUSES = [
   "Completed (Confirmed by Client and Vendor with Photos)",
   "Completed (Confirmed by Vendor Only with Photos)",

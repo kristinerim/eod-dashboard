@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 interface Props {
-  tables: ("jobs" | "reports" | "time_entries")[];
+  tables: ("jobs" | "reports" | "time_entries" | "leads" | "invoices")[];
   filter?: string;
 }
 

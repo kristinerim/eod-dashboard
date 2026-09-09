@@ -426,3 +426,165 @@ alter table jobs add column if not exists time_dispatched timestamptz;
 
 -- Customer Details section of the Add Job form.
 alter table jobs add column if not exists customer_name text;
+
+-- Leads & Invoices: formalizes the pre-Job inquiry stage (previously only
+-- expressed as job_status = 'Appointment') into its own record, and adds
+-- billing on top of a Job. A Lead either converts into a Job (job_id set,
+-- converted_at recorded) or is lost (disposition recorded) — both cases stay
+-- in the system so conversion rates and loss reasons can be reported on.
+-- Existing jobs/statuses are untouched; Leads are an additional, optional
+-- entry point in front of the existing "Add job" flow.
+create sequence if not exists lead_number_seq start 1001;
+create sequence if not exists invoice_number_seq start 1001;
+
+create table if not exists leads (
+  id uuid primary key default gen_random_uuid(),
+  lead_number text not null unique default ('LD-' || nextval('lead_number_seq')),
+  status text not null default 'open' check (status in ('open', 'converted', 'lost')),
+  agent text,
+  dispatcher text,
+  customer_name text,
+  customer_phone text,
+  state text,
+  source text,
+  notes text,
+  disposition text check (disposition in (
+    'Price Too High', 'Shopping Around', 'No Answer', 'Customer Declined',
+    'Out of Coverage', 'Follow-Up Needed', 'Other'
+  )),
+  disposition_notes text,
+  disposition_at timestamptz,
+  job_id uuid references jobs(id) on delete set null,
+  converted_at timestamptz,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table jobs add column if not exists lead_id uuid references leads(id) on delete set null;
+
+create index if not exists leads_status_idx on leads(status);
+create index if not exists leads_job_id_idx on leads(job_id);
+create index if not exists jobs_lead_id_idx on jobs(lead_id);
+
+alter table leads enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'leads' and policyname = 'authenticated can read leads'
+  ) then
+    create policy "authenticated can read leads" on leads
+      for select to authenticated using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'leads' and policyname = 'authenticated can insert leads'
+  ) then
+    create policy "authenticated can insert leads" on leads
+      for insert to authenticated with check (is_supervisor() or agent = current_agent_name());
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'leads' and policyname = 'authenticated can update leads'
+  ) then
+    create policy "authenticated can update leads" on leads
+      for update to authenticated
+      using (is_supervisor() or agent = current_agent_name())
+      with check (is_supervisor() or agent = current_agent_name());
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'leads' and policyname = 'supervisors can delete leads'
+  ) then
+    create policy "supervisors can delete leads" on leads
+      for delete to authenticated using (is_supervisor());
+  end if;
+end $$;
+
+create table if not exists invoices (
+  id uuid primary key default gen_random_uuid(),
+  invoice_number text not null unique default ('INV-' || nextval('invoice_number_seq')),
+  job_id uuid not null references jobs(id) on delete cascade,
+  customer_name text,
+  customer_phone text,
+  job_number text,
+  state text,
+  service_details text,
+  amount numeric,
+  amount_paid numeric not null default 0,
+  status text not null default 'Draft' check (status in (
+    'Draft', 'Sent', 'Paid', 'Partially Paid', 'Voided', 'Refunded'
+  )),
+  notes text,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  paid_at timestamptz,
+  voided_at timestamptz,
+  refunded_at timestamptz
+);
+
+create index if not exists invoices_job_id_idx on invoices(job_id);
+create index if not exists invoices_status_idx on invoices(status);
+
+alter table invoices enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'invoices' and policyname = 'authenticated can read invoices'
+  ) then
+    create policy "authenticated can read invoices" on invoices
+      for select to authenticated using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'invoices' and policyname = 'authenticated can insert invoices'
+  ) then
+    create policy "authenticated can insert invoices" on invoices
+      for insert to authenticated with check (
+        is_supervisor() or exists (
+          select 1 from jobs where jobs.id = invoices.job_id and jobs.agent = current_agent_name()
+        )
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'invoices' and policyname = 'authenticated can update invoices'
+  ) then
+    create policy "authenticated can update invoices" on invoices
+      for update to authenticated
+      using (
+        is_supervisor() or exists (
+          select 1 from jobs where jobs.id = invoices.job_id and jobs.agent = current_agent_name()
+        )
+      )
+      with check (
+        is_supervisor() or exists (
+          select 1 from jobs where jobs.id = invoices.job_id and jobs.agent = current_agent_name()
+        )
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'invoices' and policyname = 'supervisors can delete invoices'
+  ) then
+    create policy "supervisors can delete invoices" on invoices
+      for delete to authenticated using (is_supervisor());
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'leads'
+  ) then
+    alter publication supabase_realtime add table leads;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'invoices'
+  ) then
+    alter publication supabase_realtime add table invoices;
+  end if;
+end $$;

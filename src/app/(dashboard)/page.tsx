@@ -61,7 +61,12 @@ export default async function DashboardPage() {
   if (!reports || reports.length === 0) {
     return (
       <div className="space-y-4">
-        <AddTodayJobButton />
+        <div className="flex items-center gap-3">
+          <Link href="/leads" className="text-sm text-black/60 underline hover:text-black">
+            New inquiry? Create a lead
+          </Link>
+          <AddTodayJobButton />
+        </div>
         <p className="text-sm text-black/70">No reports yet. Add today&apos;s first job above.</p>
       </div>
     );
@@ -143,7 +148,12 @@ export default async function DashboardPage() {
 
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Today — {formatDate(today)}</h1>
-        <AddTodayJobButton />
+        <div className="flex items-center gap-3">
+          <Link href="/leads" className="text-sm text-black/60 underline hover:text-black">
+            New inquiry? Create a lead
+          </Link>
+          <AddTodayJobButton />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
