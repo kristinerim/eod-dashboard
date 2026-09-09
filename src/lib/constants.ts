@@ -111,6 +111,13 @@ export const TEAM_MEMBERS = [
   "Rhlyn Eddio-Amango",
   "Michael Tosin",
   "Meccael Segundo",
+  "Mary Grace Alcido",
+  "Rene Galla Silva",
+  "Sally Jean Dauzon",
+  "Angelo Caliboso Corpuz",
+  "Emmanuella Eloho Umukoro",
+  "Chioma Vivian Iwunna",
+  "Collins Nnadi Ifeanyichukwu",
 ].sort((a, b) => a.localeCompare(b));
 
 export const US_STATE_CODES = [
