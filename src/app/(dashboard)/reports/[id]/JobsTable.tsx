@@ -6,7 +6,7 @@ import Link from "next/link";
 import JobForm, { type OpenLead } from "./JobForm";
 import { deleteJob } from "./job-actions";
 import { needsRefund } from "@/lib/aggregate";
-import type { ContactedVendorRow } from "./job-fields";
+import { isCancelledJobStatus, type ContactedVendorRow } from "./job-fields";
 
 export interface Job {
   id: string;
@@ -339,6 +339,8 @@ export default function JobsTable({
                       <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
                         NO VENDOR - ACTION NEEDED
                       </span>
+                    ) : c.key === "cancellation_reason" && !isCancelledJobStatus(j.job_status) ? (
+                      ""
                     ) : c.currency ? (
                       formatCurrency(j[c.key] as number | null)
                     ) : c.datetime ? (
