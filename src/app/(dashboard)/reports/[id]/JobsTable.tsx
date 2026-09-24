@@ -113,6 +113,12 @@ const COLUMNS: Column[] = [
   { key: "customer_charged_via", label: "Customer charged via" },
   { key: "vendor_paid_via", label: "Vendor paid via" },
   { key: "reviewed_by", label: "Reviewed by" },
+  { key: "last4_vpc", label: "Last 4 of VPC" },
+  { key: "call_que", label: "Call Queue" },
+  { key: "brex_check", label: "Brex Check" },
+  { key: "slash_check", label: "Slash Check" },
+  { key: "wc_entered_by_jon", label: "WC (Entered by Jon)" },
+  { key: "final_checked_by_zumi", label: "Final Checked by Zumi" },
   { key: "dispatched_time", label: "Dispatched / appt notes" },
   { key: "notes", label: "Notes" },
 ];
