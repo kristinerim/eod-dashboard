@@ -7,6 +7,7 @@ import { getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profil
 import {
   contactedVendorsFromForm,
   jobFieldsFromForm,
+  strOrNull,
   upsertReportForDate,
   validateCoreRequiredFields,
   validateEtaUpdatedOnDispatch,
@@ -18,6 +19,7 @@ import {
   isCompletedJobStatus,
   isPendingCompletionStatus,
 } from "./job-fields";
+import { findOrCreateLeadForJob } from "@/lib/leadMatching";
 
 type ActionResult = { success: true; id?: string } | { error: string };
 
@@ -138,6 +140,27 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
   if (inserted?.id) {
     const vendorsError = await syncContactedVendors(supabase, inserted.id, formData);
     if (vendorsError) return { error: vendorsError };
+
+    // Link this job to a customer's Lead — either the one explicitly picked
+    // in the Client Details "load from an existing lead" selector, or (if
+    // none was picked) whichever lead matches this job's phone/email/name,
+    // creating one if nothing matches. Every new job ends up linked.
+    const explicitLeadId = strOrNull(formData.get("selected_lead_id"));
+    const leadResult = explicitLeadId
+      ? { leadId: explicitLeadId }
+      : await findOrCreateLeadForJob(supabase, {
+          customerName: fields.customer_name,
+          customerPhone: fields.customer_phone,
+          email: fields.client_email,
+          agent: fields.agent,
+          dispatcher: fields.dispatcher,
+          state: fields.state,
+          jobId: inserted.id,
+          jobTimeConverted: fields.time_converted,
+        });
+    if ("leadId" in leadResult) {
+      await supabase.from("jobs").update({ lead_id: leadResult.leadId }).eq("id", inserted.id);
+    }
   }
 
   revalidatePath(`/reports/${targetReportId}`);

@@ -170,6 +170,7 @@ export default function JobForm({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <input type="hidden" name="contacted_vendors_json" value={JSON.stringify(vendorRows)} />
+          {isNewJob && selectedLeadId && <input type="hidden" name="selected_lead_id" value={selectedLeadId} />}
 
           {/* 1. Client Details */}
           <Section title="Client Details">

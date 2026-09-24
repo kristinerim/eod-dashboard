@@ -27,6 +27,15 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     if (job) jobLink = { reportId: job.report_id, jobId: job.id, jobNumber: job.job_number };
   }
 
+  // A lead can now have many jobs (customers with repeat business are
+  // deduped onto one lead rather than one each) — leads.job_id above is just
+  // the original single-conversion back-reference; this is the full list.
+  const { data: linkedJobs } = await supabase
+    .from("jobs")
+    .select("id, report_id, job_number, job_amount, time_converted")
+    .eq("lead_id", id)
+    .order("time_converted", { ascending: false, nullsFirst: false });
+
   const profile = await getCurrentProfile();
   const canDelete = isSupervisor(profile?.role);
   const agentOptions = await getAgentNameOptions();
@@ -38,6 +47,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     { label: "Dispatcher", value: lead.dispatcher ?? "-" },
     { label: "Customer name", value: lead.customer_name ?? "-" },
     { label: "Customer phone", value: lead.customer_phone ?? "-" },
+    { label: "Email", value: lead.email ?? "-" },
     { label: "State", value: lead.state ?? "-" },
     { label: "Source", value: lead.source ?? "-" },
     { label: "Notes", value: lead.notes ?? "-" },
@@ -91,6 +101,44 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
             <span className="text-right font-medium">{f.value}</span>
           </div>
         ))}
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold">Jobs ({linkedJobs?.length ?? 0})</h2>
+        <div className="overflow-hidden rounded-lg border border-black/10">
+          {linkedJobs && linkedJobs.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-black/5 text-left">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Job #</th>
+                  <th className="px-4 py-2 font-medium">Time converted</th>
+                  <th className="px-4 py-2 font-medium">Job amount</th>
+                  <th className="px-4 py-2 font-medium"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {linkedJobs.map((j) => (
+                  <tr key={j.id} className="border-t border-black/10">
+                    <td className="px-4 py-2">{j.job_number ?? "-"}</td>
+                    <td className="px-4 py-2">{formatDateTime(j.time_converted)}</td>
+                    <td className="px-4 py-2">
+                      {j.job_amount != null
+                        ? j.job_amount.toLocaleString("en-US", { style: "currency", currency: "USD" })
+                        : "-"}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Link href={`/reports/${j.report_id}/jobs/${j.id}`} className="underline">
+                        View →
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="p-4 text-sm text-black/50">No jobs linked to this lead yet.</p>
+          )}
+        </div>
       </div>
     </div>
   );

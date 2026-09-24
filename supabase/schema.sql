@@ -717,3 +717,15 @@ alter table jobs add column if not exists locking_lug_nut text;
 alter table jobs add column if not exists number_of_gallons numeric;
 alter table jobs add column if not exists fuel_type text;
 alter table jobs add column if not exists tire_size text;
+
+-- Backfill Leads from existing jobs + auto-link future jobs (src/lib/leadMatching.ts).
+-- Normalized columns let matching a new job against existing leads be a fast
+-- indexed lookup instead of fetching every lead into memory on every save.
+alter table leads add column if not exists email text;
+alter table leads add column if not exists phone_normalized text;
+alter table leads add column if not exists email_normalized text;
+alter table leads add column if not exists name_normalized text;
+
+create index if not exists leads_phone_normalized_idx on leads(phone_normalized);
+create index if not exists leads_email_normalized_idx on leads(email_normalized);
+create index if not exists leads_name_normalized_idx on leads(name_normalized);

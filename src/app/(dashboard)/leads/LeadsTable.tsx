@@ -12,6 +12,7 @@ export interface Lead {
   dispatcher: string | null;
   customer_name: string | null;
   customer_phone: string | null;
+  email: string | null;
   state: string | null;
   source: string | null;
   notes: string | null;
