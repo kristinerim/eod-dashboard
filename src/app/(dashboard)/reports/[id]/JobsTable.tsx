@@ -7,6 +7,8 @@ import JobForm, { type OpenLead } from "./JobForm";
 import { deleteJob } from "./job-actions";
 import { needsRefund } from "@/lib/aggregate";
 import type { ContactedVendorRow } from "./job-fields";
+import { InlineTextCell, InlineSelectCell } from "./InlineEditCell";
+import { FINAL_CHECK_OPTIONS } from "@/lib/constants";
 
 export interface Job {
   id: string;
@@ -87,6 +89,7 @@ type Column = {
   label: string;
   currency?: boolean;
   datetime?: boolean;
+  quickEdit?: "text" | "select";
 };
 
 const COLUMNS: Column[] = [
@@ -113,12 +116,12 @@ const COLUMNS: Column[] = [
   { key: "customer_charged_via", label: "Customer charged via" },
   { key: "vendor_paid_via", label: "Vendor paid via" },
   { key: "reviewed_by", label: "Reviewed by" },
-  { key: "last4_vpc", label: "Last 4 of VPC" },
-  { key: "call_que", label: "Call Queue" },
-  { key: "brex_check", label: "Brex Check" },
-  { key: "slash_check", label: "Slash Check" },
-  { key: "wc_entered_by_jon", label: "WC (Entered by Jon)" },
-  { key: "final_checked_by_zumi", label: "Final Checked by Zumi" },
+  { key: "last4_vpc", label: "Last 4 of VPC", quickEdit: "text" },
+  { key: "call_que", label: "Call Queue", quickEdit: "text" },
+  { key: "brex_check", label: "Brex Check", quickEdit: "text" },
+  { key: "slash_check", label: "Slash Check", quickEdit: "text" },
+  { key: "wc_entered_by_jon", label: "WC (Entered by Jon)", quickEdit: "text" },
+  { key: "final_checked_by_zumi", label: "Final Checked by Zumi", quickEdit: "select" },
   { key: "dispatched_time", label: "Dispatched / appt notes" },
   { key: "notes", label: "Notes" },
 ];
@@ -339,11 +342,29 @@ export default function JobsTable({
                   )}
                 </td>
                 {COLUMNS.map((c) => (
-                  <td key={c.key} className="whitespace-nowrap px-3 py-2">
+                  <td
+                    key={c.key}
+                    className={c.quickEdit ? "px-1 py-1" : "whitespace-nowrap px-3 py-2"}
+                  >
                     {c.key === "vendor_name" && needsVendor(j) ? (
                       <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
                         NO VENDOR - ACTION NEEDED
                       </span>
+                    ) : c.quickEdit === "text" ? (
+                      <InlineTextCell
+                        jobId={j.id}
+                        reportId={reportId}
+                        field={c.key as "last4_vpc" | "call_que" | "brex_check" | "slash_check" | "wc_entered_by_jon"}
+                        initialValue={j[c.key] as string | null}
+                      />
+                    ) : c.quickEdit === "select" ? (
+                      <InlineSelectCell
+                        jobId={j.id}
+                        reportId={reportId}
+                        field="final_checked_by_zumi"
+                        options={FINAL_CHECK_OPTIONS}
+                        initialValue={j[c.key] as string | null}
+                      />
                     ) : c.currency ? (
                       formatCurrency(j[c.key] as number | null)
                     ) : c.datetime ? (

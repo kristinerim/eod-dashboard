@@ -104,6 +104,42 @@ export async function refundJob(
   return { success: true };
 }
 
+// Quick verification fields checked off from the Daily Report table by
+// whoever's reviewing (not necessarily the job's own agent — e.g. Jon/Zumi
+// checking every job's paperwork) — so, like cancel/refund above, any
+// signed-in team member can edit them on any job, any day, via the admin
+// client (RLS only allows updates on today's report otherwise).
+const QUICK_EDIT_FIELDS = [
+  "last4_vpc",
+  "call_que",
+  "brex_check",
+  "slash_check",
+  "wc_entered_by_jon",
+  "final_checked_by_zumi",
+] as const;
+type QuickEditField = (typeof QUICK_EDIT_FIELDS)[number];
+
+export async function updateJobQuickField(
+  jobId: string,
+  reportId: string,
+  field: QuickEditField,
+  value: string
+): Promise<ActionResult> {
+  const user = await requireUser();
+  if (!user) return { error: "Not signed in." };
+  if (!QUICK_EDIT_FIELDS.includes(field)) return { error: "Not a valid field." };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("jobs")
+    .update({ [field]: value.trim() === "" ? null : value.trim() })
+    .eq("id", jobId);
+  if (error) return { error: error.message };
+
+  revalidateJob(reportId, jobId);
+  return { success: true };
+}
+
 export async function deleteJobAnyDay(jobId: string, reportId: string): Promise<ActionResult> {
   const check = await requireSupervisor();
   if (!check.ok) return { error: check.error };

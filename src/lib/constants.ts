@@ -214,6 +214,16 @@ export const LUG_NUT_OPTIONS = ["Regular Lug Nut", "Locking Lug Nut With Key"];
 
 export const FUEL_TYPE_OPTIONS = ["Regular", "Diesel"];
 
+export const FINAL_CHECK_OPTIONS = [
+  "Completed",
+  "Needs Attention",
+  "Check Notes",
+  "No Picture from Vendor",
+  "No Customer's Written Confirmation",
+  "Vendor Has No Picture",
+  "No Picture and No Written Confirmation",
+];
+
 export const PENDING_COMPLETION_SUBSTATUSES = [
   "Completed (Confirmed by Client and Vendor with Photos)",
   "Completed (Confirmed by Vendor Only with Photos)",
