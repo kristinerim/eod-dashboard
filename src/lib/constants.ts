@@ -161,6 +161,7 @@ export const JOB_TYPES = [
   "Towing Service",
   "Heavy Duty Tow",
   "Non-Vehicle Tow",
+  "Motorcycle Tow",
   "Lockout Service",
   "Winch Service",
   "Jump Start",
@@ -168,14 +169,13 @@ export const JOB_TYPES = [
   "Winch and Tow",
   "Heavy Duty Winch Out",
   "Fuel Delivery",
-  "Special Request for Non-Vehicle",
-  "Special Request for Heavy Duty",
+  "Special Request (Non-Vehicle)",
+  "Special Request (Heavy Duty)",
   "Special Request",
   "Recovery Service",
   "Jump and Tow",
   "Tow and Storage",
-  "Decking",
-  "Undecking",
+  "Decking / Undecking",
   "Battery Replacement",
   "Locksmith Service",
   "Tire Replacement",
@@ -189,12 +189,30 @@ export const JOB_TYPES = [
   "Jump and Fuel Delivery",
   "Winch Out and Fuel Delivery",
   "Tire Change and Tow",
-  "Winch Out and Lockout Service",
+  "Winch and Lockout Service",
   "Winch Out and Jump Start",
-  "Heavy-Duty Winch and Tow",
-  "Fuel and Tow",
+  "Heavy Duty Winch and Tow",
+  "Fuel and Tow Service",
   "Winch Out and Tow",
 ];
+
+export const CAN_GO_TO_NEUTRAL_OPTIONS = ["Yes", "No", "Unknown"];
+
+export const TIRE_CONDITION_OPTIONS = ["Good", "Flat", "Blew Out", "Fell Off", "Damaged", "Unknown"];
+
+export const DRIVETRAIN_OPTIONS = [
+  "Front-Wheel Drive",
+  "Rear-Wheel Drive",
+  "Four-Wheel Drive",
+  "All-Wheel Drive",
+  "Unknown",
+];
+
+export const GOOD_SPARE_TIRE_OPTIONS = ["Yes", "No", "N/A"];
+
+export const LUG_NUT_OPTIONS = ["Regular Lug Nut", "Locking Lug Nut With Key"];
+
+export const FUEL_TYPE_OPTIONS = ["Regular", "Diesel"];
 
 export const PENDING_COMPLETION_SUBSTATUSES = [
   "Completed (Confirmed by Client and Vendor with Photos)",

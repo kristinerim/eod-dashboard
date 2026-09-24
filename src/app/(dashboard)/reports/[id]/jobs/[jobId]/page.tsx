@@ -6,6 +6,7 @@ import { needsRefund } from "@/lib/aggregate";
 import type { Job } from "../../JobsTable";
 import type { Invoice } from "../../../../invoices/InvoicesTable";
 import type { ContactedVendorRow } from "../../job-fields";
+import { JOB_TYPE_FIELD_KEYS, JOB_DETAIL_FIELD_DEFS } from "@/lib/jobTypeFields";
 import JobDetailActions from "./JobDetailActions";
 import JobInvoicesSection from "./JobInvoicesSection";
 
@@ -144,6 +145,15 @@ export default async function JobDetailPage({
         { label: "Sub-status", value: job.pending_completion_substatus ?? "-" },
         { label: "Cancellation reason", value: job.cancellation_reason ?? "-" },
         { label: "Notes", value: job.notes ?? "-" },
+        // Only the fields relevant to this job's Job Type are shown here — the
+        // same config (src/lib/jobTypeFields.ts) that drives which fields
+        // appear in the edit form, so the two never disagree.
+        ...(JOB_TYPE_FIELD_KEYS[job.job_type ?? ""] ?? [])
+          .filter((key) => key !== "service_location")
+          .map((key) => ({
+            label: JOB_DETAIL_FIELD_DEFS[key].label,
+            value: job[key as keyof typeof job] ?? "-",
+          })),
       ],
     },
     {

@@ -63,6 +63,23 @@ export interface Job {
   quoted_by_dispatcher: string | null;
   card_expiry: string | null;
   billing_address: string | null;
+  year_make_model: string | null;
+  vin_or_lpn: string | null;
+  color: string | null;
+  issue: string | null;
+  can_go_to_neutral: string | null;
+  tire_condition: string | null;
+  drivetrain: string | null;
+  drop_off_location: string | null;
+  second_drop_off_location: string | null;
+  distance_miles: number | null;
+  customer_card_last4: string | null;
+  customer_billing_address: string | null;
+  with_good_spare_tire: string | null;
+  locking_lug_nut: string | null;
+  number_of_gallons: number | null;
+  fuel_type: string | null;
+  tire_size: string | null;
 }
 
 type Column = {

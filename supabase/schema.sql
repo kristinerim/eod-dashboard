@@ -693,3 +693,27 @@ begin
     alter publication supabase_realtime add table job_contacted_vendors;
   end if;
 end $$;
+
+-- Dynamic, job-type-specific Job Details fields (see src/lib/jobTypeFields.ts
+-- for which fields apply to which Job Type). All plain unconstrained text/
+-- numeric, matching the existing job_status/customer_charged_via precedent —
+-- dropdown options are enforced in the app, not the database.
+alter table jobs add column if not exists year_make_model text;
+alter table jobs add column if not exists vin_or_lpn text;
+alter table jobs add column if not exists color text;
+alter table jobs add column if not exists issue text;
+alter table jobs add column if not exists can_go_to_neutral text;
+alter table jobs add column if not exists tire_condition text;
+alter table jobs add column if not exists drivetrain text;
+alter table jobs add column if not exists drop_off_location text;
+alter table jobs add column if not exists second_drop_off_location text;
+alter table jobs add column if not exists distance_miles numeric;
+-- Distinct from the existing last4_vpc/billing_address (the vendor's payment
+-- info) — this is the customer's card, same last-4-only rule applies.
+alter table jobs add column if not exists customer_card_last4 text;
+alter table jobs add column if not exists customer_billing_address text;
+alter table jobs add column if not exists with_good_spare_tire text;
+alter table jobs add column if not exists locking_lug_nut text;
+alter table jobs add column if not exists number_of_gallons numeric;
+alter table jobs add column if not exists fuel_type text;
+alter table jobs add column if not exists tire_size text;

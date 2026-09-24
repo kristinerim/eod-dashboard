@@ -211,6 +211,28 @@ export function jobFieldsFromForm(formData: FormData) {
     job_name: strOrNull(formData.get("job_name")),
     job_type: strOrNull(formData.get("job_type")),
 
+    // Job Details — dynamic, job-type-specific fields (see src/lib/jobTypeFields.ts).
+    // Only the fields relevant to the currently-selected job type are mounted
+    // in the form, so this naturally never picks up a stale value from a
+    // previously-selected job type.
+    year_make_model: strOrNull(formData.get("year_make_model")),
+    vin_or_lpn: strOrNull(formData.get("vin_or_lpn")),
+    color: strOrNull(formData.get("color")),
+    issue: strOrNull(formData.get("issue")),
+    can_go_to_neutral: strOrNull(formData.get("can_go_to_neutral")),
+    tire_condition: strOrNull(formData.get("tire_condition")),
+    drivetrain: strOrNull(formData.get("drivetrain")),
+    drop_off_location: strOrNull(formData.get("drop_off_location")),
+    second_drop_off_location: strOrNull(formData.get("second_drop_off_location")),
+    distance_miles: numberOrNull(formData.get("distance_miles")),
+    customer_card_last4: strOrNull(formData.get("customer_card_last4")),
+    customer_billing_address: strOrNull(formData.get("customer_billing_address")),
+    with_good_spare_tire: strOrNull(formData.get("with_good_spare_tire")),
+    locking_lug_nut: strOrNull(formData.get("locking_lug_nut")),
+    number_of_gallons: numberOrNull(formData.get("number_of_gallons")),
+    fuel_type: strOrNull(formData.get("fuel_type")),
+    tire_size: strOrNull(formData.get("tire_size")),
+
     // Schedule
     schedule_start_at: datetimeLocalPHTToIso(formData.get("schedule_start_at")),
     schedule_end_at: datetimeLocalPHTToIso(formData.get("schedule_end_at")),

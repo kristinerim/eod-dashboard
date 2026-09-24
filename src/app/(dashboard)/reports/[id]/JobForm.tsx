@@ -13,6 +13,7 @@ import {
 import { createJob, updateJob } from "./job-actions";
 import type { ContactedVendorRow } from "./job-fields";
 import type { Job } from "./JobsTable";
+import JobTypeFields from "./JobTypeFields";
 
 const PENDING_COMPLETION_STATUS = "Service Rendered – Pending Completion";
 
@@ -89,6 +90,7 @@ export default function JobForm({
   const [vendorsFee, setVendorsFee] = useState(job?.vendors_fee?.toString() ?? "");
   const [refundedToClient, setRefundedToClient] = useState(job?.refunded_to_client?.toString() ?? "");
   const [jobStatus, setJobStatus] = useState(job?.job_status ?? "");
+  const [jobType, setJobType] = useState(job?.job_type ?? "");
   const [vendorPaidVia, setVendorPaidVia] = useState(job?.vendor_paid_via ?? "");
   const [timeDispatched, setTimeDispatched] = useState(isoToDatetimeLocalPHT(job?.time_dispatched));
   const [etaMinutes, setEtaMinutes] = useState(job?.eta_minutes?.toString() ?? "");
@@ -358,7 +360,8 @@ export default function JobForm({
               <Field label="Job type">
                 <select
                   name="job_type"
-                  defaultValue={job?.job_type ?? ""}
+                  value={jobType}
+                  onChange={(e) => setJobType(e.target.value)}
                   className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                 >
                   <option value="">-</option>
@@ -370,6 +373,8 @@ export default function JobForm({
                 </select>
               </Field>
             </div>
+
+            <JobTypeFields jobType={jobType} job={job} />
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Job status">
