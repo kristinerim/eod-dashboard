@@ -146,6 +146,22 @@ function formatDateTime(d: string | null) {
   return new Date(d).toLocaleString("en-US", { timeZone: "Asia/Manila" });
 }
 
+// Matches the "MM/DD/YYYY – h:mm AM/PM" format used in the job's own Notes /
+// Updates history, so the dashboard preview reads the same way.
+function formatNoteTimestamp(d: string) {
+  const parts = new Date(d).toLocaleString("en-US", {
+    timeZone: "Asia/Manila",
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  const [datePart, timePart] = parts.split(", ");
+  return `${datePart} – ${timePart}`;
+}
+
 /** Appointments with no vendor yet need dispatcher attention. */
 function needsVendor(j: Job): boolean {
   return j.job_status?.trim().toLowerCase() === "appointment" && !j.vendor_name;
@@ -162,6 +178,7 @@ export default function JobsTable({
   currentAgentName,
   openLeads,
   contactedVendorsByJobId,
+  latestNoteByJobId,
 }: {
   jobs: Job[];
   reportId: string;
@@ -172,6 +189,7 @@ export default function JobsTable({
   currentAgentName?: string | null;
   openLeads?: OpenLead[];
   contactedVendorsByJobId?: Record<string, (ContactedVendorRow & { id: string })[]>;
+  latestNoteByJobId?: Record<string, { note: string; author: string | null; created_at: string }>;
 }) {
   const canEditJob = (job: Job) =>
     currentRole !== "agent" || job.agent === currentAgentName;
@@ -293,6 +311,7 @@ export default function JobsTable({
               <th className="sticky left-0 z-10 whitespace-nowrap bg-black/5 px-3 py-2 font-medium">
                 Actions
               </th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Latest Note</th>
               {COLUMNS.map((c) => (
                 <th
                   key={c.key}
@@ -339,6 +358,18 @@ export default function JobsTable({
                     >
                       Delete
                     </button>
+                  )}
+                </td>
+                <td className="max-w-[220px] px-3 py-2">
+                  {latestNoteByJobId?.[j.id] ? (
+                    <div title={latestNoteByJobId[j.id].note}>
+                      <div className="whitespace-nowrap text-xs text-black/50">
+                        {formatNoteTimestamp(latestNoteByJobId[j.id].created_at)} | {latestNoteByJobId[j.id].author ?? "Unknown"}
+                      </div>
+                      <div className="truncate">{latestNoteByJobId[j.id].note}</div>
+                    </div>
+                  ) : (
+                    "-"
                   )}
                 </td>
                 {COLUMNS.map((c) => (

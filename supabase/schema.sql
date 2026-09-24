@@ -729,3 +729,46 @@ alter table leads add column if not exists name_normalized text;
 create index if not exists leads_phone_normalized_idx on leads(phone_normalized);
 create index if not exists leads_email_normalized_idx on leads(email_normalized);
 create index if not exists leads_name_normalized_idx on leads(name_normalized);
+
+-- Append-only running history of job updates (date/time/author/note),
+-- distinct from the existing single jobs.notes field. No update or delete
+-- policy exists at all — "never overwrite previous notes" is enforced here
+-- at the database level, not just by app convention.
+create table if not exists job_notes (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  note text not null,
+  author text,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists job_notes_job_id_idx on job_notes(job_id);
+
+alter table job_notes enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'job_notes' and policyname = 'authenticated can read job notes'
+  ) then
+    create policy "authenticated can read job notes" on job_notes
+      for select to authenticated using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'job_notes' and policyname = 'authenticated can insert job notes'
+  ) then
+    create policy "authenticated can insert job notes" on job_notes
+      for insert to authenticated with check (true);
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'job_notes'
+  ) then
+    alter publication supabase_realtime add table job_notes;
+  end if;
+end $$;

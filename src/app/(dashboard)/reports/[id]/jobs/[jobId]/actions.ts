@@ -140,6 +140,41 @@ export async function updateJobQuickField(
   return { success: true };
 }
 
+// Append-only running history (job_notes) — distinct from the single
+// jobs.notes field. No update/delete action exists here at all, matching the
+// table's RLS (no update/delete policy): once added, a note can't be
+// changed or removed. Any signed-in team member can add one, same as the
+// quick-edit fields above.
+export async function addJobNote(
+  jobId: string,
+  reportId: string,
+  note: string
+): Promise<ActionResult> {
+  const trimmed = note.trim();
+  if (!trimmed) return { error: "Enter an update before saving." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("agent_name, email")
+    .eq("id", user.id)
+    .single();
+  const author = profile?.agent_name ?? profile?.email ?? user.email ?? "Unknown";
+
+  const { error } = await supabase
+    .from("job_notes")
+    .insert({ job_id: jobId, note: trimmed, author, created_by: user.id });
+  if (error) return { error: error.message };
+
+  revalidateJob(reportId, jobId);
+  return { success: true };
+}
+
 export async function deleteJobAnyDay(jobId: string, reportId: string): Promise<ActionResult> {
   const check = await requireSupervisor();
   if (!check.ok) return { error: check.error };

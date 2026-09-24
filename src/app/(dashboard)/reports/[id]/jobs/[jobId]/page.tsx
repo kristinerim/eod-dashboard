@@ -9,6 +9,7 @@ import { isCancelledJobStatus, type ContactedVendorRow } from "../../job-fields"
 import { JOB_TYPE_FIELD_KEYS, JOB_DETAIL_FIELD_DEFS } from "@/lib/jobTypeFields";
 import JobDetailActions from "./JobDetailActions";
 import JobInvoicesSection from "./JobInvoicesSection";
+import JobNotesSection, { type JobNote } from "./JobNotesSection";
 
 function formatCurrency(n: number | null) {
   if (n === null) return "-";
@@ -85,6 +86,12 @@ export default async function JobDetailPage({
     .select("id, vendor_name, phone_number, eta_given, goa")
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
+
+  const { data: jobNotes } = await supabase
+    .from("job_notes")
+    .select("id, note, author, created_at")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: false });
 
   const sections: { title: string; fields: { label: string; value: React.ReactNode }[] }[] = [
     {
@@ -227,6 +234,8 @@ export default async function JobDetailPage({
     },
   ];
 
+  const jobDetailsIndex = sections.findIndex((s) => s.title === "Job Details");
+
   return (
     <div className="max-w-3xl space-y-6">
       <div>
@@ -254,7 +263,23 @@ export default async function JobDetailPage({
         contactedVendors={(contactedVendors ?? []) as (ContactedVendorRow & { id: string })[]}
       />
 
-      {sections.map((section) => (
+      {sections.slice(0, jobDetailsIndex + 1).map((section) => (
+        <div key={section.title}>
+          <h2 className="mb-2 text-sm font-semibold">{section.title}</h2>
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-lg border border-black/10 p-4 sm:grid-cols-2">
+            {section.fields.map((f) => (
+              <div key={f.label} className="flex justify-between gap-4 text-sm">
+                <span className="text-black/50">{f.label}</span>
+                <span className="text-right font-medium">{f.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <JobNotesSection jobId={jobId} reportId={id} notes={(jobNotes ?? []) as JobNote[]} />
+
+      {sections.slice(jobDetailsIndex + 1).map((section) => (
         <div key={section.title}>
           <h2 className="mb-2 text-sm font-semibold">{section.title}</h2>
           <div className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-lg border border-black/10 p-4 sm:grid-cols-2">

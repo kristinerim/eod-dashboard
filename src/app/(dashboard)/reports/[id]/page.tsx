@@ -72,6 +72,22 @@ export default async function ReportDetailPage({
     (contactedVendorsByJobId[row.job_id] ??= []).push(row);
   }
 
+  // Latest note per job for the dashboard's "Latest Note" column — pulled
+  // from the same job_notes history shown in full on each job's own page,
+  // reduced to the single newest row per job.
+  const jobNoteRows = await fetchAllRows<{ job_id: string; note: string; author: string | null; created_at: string }>(
+    () =>
+      supabase
+        .from("job_notes")
+        .select("job_id, note, author, created_at")
+        .in("job_id", jobIds.length > 0 ? jobIds : [""])
+        .order("created_at", { ascending: false })
+  );
+  const latestNoteByJobId: Record<string, { note: string; author: string | null; created_at: string }> = {};
+  for (const row of jobNoteRows) {
+    if (!latestNoteByJobId[row.job_id]) latestNoteByJobId[row.job_id] = row;
+  }
+
   const cards = [
     { label: "Total profit", value: formatCurrency(summary.totalProfit) },
     { label: "Total jobs", value: summary.jobCount },
@@ -81,7 +97,14 @@ export default async function ReportDetailPage({
 
   return (
     <div className="space-y-8">
-      {isToday && <RealtimeRefresh tables={["jobs"]} filter={`report_id=eq.${id}`} />}
+      {isToday && (
+        <>
+          <RealtimeRefresh tables={["jobs"]} filter={`report_id=eq.${id}`} />
+          {/* job_notes has no report_id column to filter on, so this
+              subscribes broadly rather than misapplying the jobs filter. */}
+          <RealtimeRefresh tables={["job_notes"]} />
+        </>
+      )}
 
       <h1 className="flex items-center gap-2 text-lg font-semibold">
         {formatDate(report.report_date)}
@@ -161,6 +184,7 @@ export default async function ReportDetailPage({
           currentAgentName={profile?.agent_name}
           openLeads={openLeads}
           contactedVendorsByJobId={contactedVendorsByJobId}
+          latestNoteByJobId={latestNoteByJobId}
         />
       </div>
     </div>
