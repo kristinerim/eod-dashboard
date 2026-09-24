@@ -5,7 +5,7 @@ import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/prof
 import { needsRefund } from "@/lib/aggregate";
 import type { Job } from "../../JobsTable";
 import type { Invoice } from "../../../../invoices/InvoicesTable";
-import type { ContactedVendorRow } from "../../job-fields";
+import { isCancelledJobStatus, type ContactedVendorRow } from "../../job-fields";
 import { JOB_TYPE_FIELD_KEYS, JOB_DETAIL_FIELD_DEFS } from "@/lib/jobTypeFields";
 import JobDetailActions from "./JobDetailActions";
 import JobInvoicesSection from "./JobInvoicesSection";
@@ -143,7 +143,11 @@ export default async function JobDetailPage({
         },
         { label: "Status", value: job.job_status ?? "-" },
         { label: "Sub-status", value: job.pending_completion_substatus ?? "-" },
-        { label: "Cancellation reason", value: job.cancellation_reason ?? "-" },
+        // Only meaningful once the job is actually cancelled — hidden the
+        // rest of the time rather than showing an empty "-" for every job.
+        ...(isCancelledJobStatus(job.job_status)
+          ? [{ label: "Cancellation reason", value: job.cancellation_reason ?? "-" }]
+          : []),
         { label: "Notes", value: job.notes ?? "-" },
         // Only the fields relevant to this job's Job Type are shown here — the
         // same config (src/lib/jobTypeFields.ts) that drives which fields
@@ -198,7 +202,6 @@ export default async function JobDetailPage({
         { label: "Profit", value: formatCurrency(job.profit) },
         { label: "Charged via", value: job.customer_charged_via ?? "-" },
         { label: "Paid via", value: job.vendor_paid_via ?? "-" },
-        { label: "Vendor card (last 4)", value: job.last4_vpc ?? "-" },
         { label: "Card expiry", value: job.card_expiry ?? "-" },
         { label: "Billing address", value: job.billing_address ?? "-" },
         { label: "TL quote", value: formatCurrency(job.tl_quote) },
@@ -207,14 +210,19 @@ export default async function JobDetailPage({
       ],
     },
     {
-      title: "Other (from Excel upload)",
+      // Applies to every job, not just Excel-uploaded ones — these are the
+      // same reviewed_by/call_que/brex_check/slash_check/wc_entered_by_jon/
+      // final_checked_by_zumi columns on the job record, just surfaced here
+      // so they're visible without opening Edit.
+      title: "Verification & Admin",
       fields: [
         { label: "Reviewed by", value: job.reviewed_by ?? "-" },
-        { label: "Call que", value: job.call_que ?? "-" },
+        { label: "Call queue", value: job.call_que ?? "-" },
         { label: "Brex check", value: job.brex_check ?? "-" },
         { label: "Slash check", value: job.slash_check ?? "-" },
         { label: "WC (entered by Jon)", value: job.wc_entered_by_jon ?? "-" },
         { label: "Final checked by Zumi", value: job.final_checked_by_zumi ?? "-" },
+        { label: "Last 4 of VPC", value: job.last4_vpc ?? "-" },
       ],
     },
   ];
