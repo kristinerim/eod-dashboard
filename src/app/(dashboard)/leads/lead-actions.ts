@@ -212,6 +212,9 @@ export async function convertLeadToJob(leadId: string, formData: FormData): Prom
     .select("id", { count: "exact", head: true })
     .eq("report_id", targetReportId);
 
+  // lead_id is set directly here (not via findOrCreateLeadForJob) since this
+  // job is explicitly being converted from a specific, already-known lead —
+  // no matching needed, and it can't create a duplicate.
   const { data: inserted, error } = await supabase
     .from("jobs")
     .insert({

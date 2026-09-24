@@ -1,5 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// Invariant: every job, however it's created, must end up with a lead_id.
+// Today that means every place that inserts a row into `jobs` either passes
+// a known lead_id directly (convertLeadToJob, converting a specific lead) or
+// calls findOrCreateLeadForJob below (createJob, and the one-time backfill
+// in scripts/backfill-job-leads.ts). Any future job-creation path — a bulk
+// import, an admin tool, anything — must do the same.
+
 // Placeholder values seen in real customer_name data that must never be
 // treated as a real name to match on (confirmed via a production dry run —
 // "-" alone would otherwise merge several unrelated customers into one lead).

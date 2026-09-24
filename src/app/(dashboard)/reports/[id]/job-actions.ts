@@ -141,10 +141,13 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     const vendorsError = await syncContactedVendors(supabase, inserted.id, formData);
     if (vendorsError) return { error: vendorsError };
 
-    // Link this job to a customer's Lead — either the one explicitly picked
-    // in the Client Details "load from an existing lead" selector, or (if
-    // none was picked) whichever lead matches this job's phone/email/name,
-    // creating one if nothing matches. Every new job ends up linked.
+    // Every new job must end up linked to a Lead — either the one explicitly
+    // picked in the Client Details "load from an existing lead" selector, or
+    // (if none was picked) whichever lead matches this job's phone/email/
+    // name, creating one if nothing matches. This is the only place jobs get
+    // created outside convertLeadToJob (which already sets lead_id directly
+    // since it's converting a specific, known lead) — if a new job-creation
+    // path is ever added elsewhere, it must call findOrCreateLeadForJob too.
     const explicitLeadId = strOrNull(formData.get("selected_lead_id"));
     const leadResult = explicitLeadId
       ? { leadId: explicitLeadId }
@@ -159,7 +162,13 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
           jobTimeConverted: fields.time_converted,
         });
     if ("leadId" in leadResult) {
-      await supabase.from("jobs").update({ lead_id: leadResult.leadId }).eq("id", inserted.id);
+      const { error: linkError } = await supabase
+        .from("jobs")
+        .update({ lead_id: leadResult.leadId })
+        .eq("id", inserted.id);
+      if (linkError) console.error(`Failed to link job ${inserted.id} to lead ${leadResult.leadId}:`, linkError.message);
+    } else {
+      console.error(`Failed to find/create a lead for job ${inserted.id}:`, leadResult.error);
     }
   }
 
