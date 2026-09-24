@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { dateInPHT, todayISO } from "@/lib/aggregate";
 import { getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profile";
 import {
+  contactedVendorsFromForm,
   jobFieldsFromForm,
   upsertReportForDate,
   validateCoreRequiredFields,
@@ -19,6 +20,33 @@ import {
 } from "./job-fields";
 
 type ActionResult = { success: true; id?: string } | { error: string };
+
+// Basic structure for now (per the plan, ahead of the Vendor Map integration):
+// replace the job's whole contacted-vendors row set with whatever was
+// submitted, rather than diffing — simplest correct sync for a client-managed
+// repeatable row group.
+async function syncContactedVendors(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  jobId: string,
+  formData: FormData
+): Promise<string | null> {
+  const rows = contactedVendorsFromForm(formData);
+
+  const { error: deleteError } = await supabase
+    .from("job_contacted_vendors")
+    .delete()
+    .eq("job_id", jobId);
+  if (deleteError) return deleteError.message;
+
+  if (rows.length === 0) return null;
+
+  const { error: insertError } = await supabase
+    .from("job_contacted_vendors")
+    .insert(rows.map((r) => ({ ...r, job_id: jobId })));
+  if (insertError) return insertError.message;
+
+  return null;
+}
 
 export async function getOrCreateTodaysReport(): Promise<ActionResult> {
   const supabase = await createClient();
@@ -106,6 +134,12 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     .single();
 
   if (error) return { error: error.message };
+
+  if (inserted?.id) {
+    const vendorsError = await syncContactedVendors(supabase, inserted.id, formData);
+    if (vendorsError) return { error: vendorsError };
+  }
+
   revalidatePath(`/reports/${targetReportId}`);
   if (targetReportId !== reportId) revalidatePath(`/reports/${reportId}`);
   revalidatePath("/");
@@ -263,6 +297,10 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
     .eq("id", jobId);
 
   if (error) return { error: error.message };
+
+  const vendorsError = await syncContactedVendors(supabase, jobId, formData);
+  if (vendorsError) return { error: vendorsError };
+
   revalidatePath(`/reports/${targetReportId}`);
   if (targetReportId !== reportId) revalidatePath(`/reports/${reportId}`);
   revalidatePath("/");

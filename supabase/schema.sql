@@ -588,3 +588,108 @@ begin
     alter publication supabase_realtime add table invoices;
   end if;
 end $$;
+
+-- Create Job form redesign: Client Details / Service Location / Job Details /
+-- Schedule / Service Provider Quote / Contacted Vendors / Additional Quotes.
+-- Fields whose concept already existed (customer_name, customer_phone, state,
+-- agent, eta_minutes, last4_vpc) are reused as-is rather than duplicated.
+-- No CVV or full card number column is added — per the security requirement,
+-- only last4_vpc (existing) + expiry + billing address are captured.
+alter table jobs add column if not exists client_company_name text;
+alter table jobs add column if not exists client_email text;
+alter table jobs add column if not exists phone_extension text;
+alter table jobs add column if not exists service_street_address text;
+alter table jobs add column if not exists service_unit text;
+alter table jobs add column if not exists service_city text;
+alter table jobs add column if not exists service_zip text;
+alter table jobs add column if not exists service_country text;
+alter table jobs add column if not exists service_latitude numeric;
+alter table jobs add column if not exists service_longitude numeric;
+alter table jobs add column if not exists job_name text;
+alter table jobs add column if not exists job_type text;
+alter table jobs add column if not exists schedule_start_at timestamptz;
+alter table jobs add column if not exists schedule_end_at timestamptz;
+alter table jobs add column if not exists is_all_day boolean not null default false;
+alter table jobs add column if not exists quoted_service_amount numeric;
+alter table jobs add column if not exists goa boolean not null default false;
+alter table jobs add column if not exists tl_quote numeric;
+alter table jobs add column if not exists tl_eta_minutes integer;
+alter table jobs add column if not exists quoted_by_dispatcher text;
+alter table jobs add column if not exists card_expiry text;
+alter table jobs add column if not exists billing_address text;
+
+-- Contacted Vendors: one job can have multiple vendors contacted for a quote.
+-- Basic structure only for now, to be extended once the Vendor Map lands.
+create table if not exists job_contacted_vendors (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  vendor_name text,
+  phone_number text,
+  eta_given text,
+  goa boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists job_contacted_vendors_job_id_idx on job_contacted_vendors(job_id);
+
+alter table job_contacted_vendors enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'job_contacted_vendors' and policyname = 'authenticated can read contacted vendors'
+  ) then
+    create policy "authenticated can read contacted vendors" on job_contacted_vendors
+      for select to authenticated using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'job_contacted_vendors' and policyname = 'authenticated can insert contacted vendors'
+  ) then
+    create policy "authenticated can insert contacted vendors" on job_contacted_vendors
+      for insert to authenticated with check (
+        is_supervisor() or exists (
+          select 1 from jobs where jobs.id = job_contacted_vendors.job_id and jobs.agent = current_agent_name()
+        )
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'job_contacted_vendors' and policyname = 'authenticated can update contacted vendors'
+  ) then
+    create policy "authenticated can update contacted vendors" on job_contacted_vendors
+      for update to authenticated
+      using (
+        is_supervisor() or exists (
+          select 1 from jobs where jobs.id = job_contacted_vendors.job_id and jobs.agent = current_agent_name()
+        )
+      )
+      with check (
+        is_supervisor() or exists (
+          select 1 from jobs where jobs.id = job_contacted_vendors.job_id and jobs.agent = current_agent_name()
+        )
+      );
+  end if;
+
+  -- Delete allowed for the same owners as insert/update (not supervisor-only
+  -- like invoices) because the form replaces the whole row set on every save.
+  if not exists (
+    select 1 from pg_policies where tablename = 'job_contacted_vendors' and policyname = 'authenticated can delete contacted vendors'
+  ) then
+    create policy "authenticated can delete contacted vendors" on job_contacted_vendors
+      for delete to authenticated using (
+        is_supervisor() or exists (
+          select 1 from jobs where jobs.id = job_contacted_vendors.job_id and jobs.agent = current_agent_name()
+        )
+      );
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'job_contacted_vendors'
+  ) then
+    alter publication supabase_realtime add table job_contacted_vendors;
+  end if;
+end $$;

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import JobForm from "../../JobForm";
 import type { Job } from "../../JobsTable";
+import type { ContactedVendorRow } from "../../job-fields";
 import { cancelJob, refundJob, deleteJobAnyDay } from "./actions";
 
 export default function JobDetailActions({
@@ -13,6 +14,7 @@ export default function JobDetailActions({
   agentOptions,
   currentRole,
   currentAgentName,
+  contactedVendors,
 }: {
   job: Job;
   reportId: string;
@@ -20,6 +22,7 @@ export default function JobDetailActions({
   agentOptions?: string[];
   currentRole?: string;
   currentAgentName?: string | null;
+  contactedVendors?: (ContactedVendorRow & { id: string })[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -109,6 +112,7 @@ export default function JobDetailActions({
           agentOptions={agentOptions}
           currentRole={currentRole}
           currentAgentName={currentAgentName}
+          contactedVendors={contactedVendors}
         />
       )}
     </div>

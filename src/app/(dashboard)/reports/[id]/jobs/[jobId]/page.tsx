@@ -5,6 +5,7 @@ import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/prof
 import { needsRefund } from "@/lib/aggregate";
 import type { Job } from "../../JobsTable";
 import type { Invoice } from "../../../../invoices/InvoicesTable";
+import type { ContactedVendorRow } from "../../job-fields";
 import JobDetailActions from "./JobDetailActions";
 import JobInvoicesSection from "./JobInvoicesSection";
 
@@ -78,11 +79,16 @@ export default async function JobDetailPage({
     .eq("job_id", jobId)
     .order("created_at", { ascending: false });
 
+  const { data: contactedVendors } = await supabase
+    .from("job_contacted_vendors")
+    .select("id, vendor_name, phone_number, eta_given, goa")
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: true });
+
   const sections: { title: string; fields: { label: string; value: React.ReactNode }[] }[] = [
     {
-      title: "Job",
+      title: "Client Details",
       fields: [
-        { label: "Row #", value: job.row_number ?? "-" },
         {
           label: "Lead",
           value: leadLink ? (
@@ -93,9 +99,37 @@ export default async function JobDetailPage({
             "-"
           ),
         },
-        { label: "Agent", value: job.agent ?? "-" },
-        { label: "Dispatcher", value: job.dispatcher ?? "-" },
+        { label: "Client name", value: job.customer_name ?? "-" },
+        { label: "Company name", value: job.client_company_name ?? "-" },
+        {
+          label: "Phone number",
+          value: job.customer_phone
+            ? `${job.customer_phone}${job.phone_extension ? ` ext. ${job.phone_extension}` : ""}`
+            : "-",
+        },
+        { label: "Email address", value: job.client_email ?? "-" },
+      ],
+    },
+    {
+      title: "Service Location",
+      fields: [
+        { label: "Street address", value: job.service_street_address ?? "-" },
+        { label: "Unit / suite / apartment", value: job.service_unit ?? "-" },
+        { label: "City", value: job.service_city ?? "-" },
+        { label: "State", value: job.state ?? "-" },
+        { label: "ZIP code", value: job.service_zip ?? "-" },
+        { label: "Country", value: job.service_country ?? "-" },
+        { label: "Latitude", value: job.service_latitude ?? "-" },
+        { label: "Longitude", value: job.service_longitude ?? "-" },
+      ],
+    },
+    {
+      title: "Job Details",
+      fields: [
+        { label: "Row #", value: job.row_number ?? "-" },
         { label: "Job number", value: job.job_number ?? "-" },
+        { label: "Job name", value: job.job_name ?? "-" },
+        { label: "Job type", value: job.job_type ?? "-" },
         {
           label: "Vendor",
           value: needsVendor(job.job_status, job.vendor_name) ? (
@@ -109,14 +143,34 @@ export default async function JobDetailPage({
         { label: "Status", value: job.job_status ?? "-" },
         { label: "Sub-status", value: job.pending_completion_substatus ?? "-" },
         { label: "Cancellation reason", value: job.cancellation_reason ?? "-" },
-        { label: "State", value: job.state ?? "-" },
-        { label: "Customer name", value: job.customer_name ?? "-" },
-        { label: "Customer phone", value: job.customer_phone ?? "-" },
         { label: "Notes", value: job.notes ?? "-" },
       ],
     },
     {
-      title: "Financials",
+      title: "Schedule",
+      fields: [
+        { label: "Agent (assigned team member)", value: job.agent ?? "-" },
+        { label: "Dispatcher", value: job.dispatcher ?? "-" },
+        { label: "All-day event", value: job.is_all_day ? "Yes" : "No" },
+        { label: "Start date & time", value: formatDateTime(job.schedule_start_at) },
+        { label: "End date & time", value: formatDateTime(job.schedule_end_at) },
+        { label: "Appointment date & time", value: formatDateTime(job.appointment_at) },
+        { label: "Time converted", value: formatDateTime(job.time_converted) },
+        { label: "Time dispatched", value: formatDateTime(job.time_dispatched) },
+        { label: "Dispatched / appt notes", value: job.dispatched_time ?? "-" },
+      ],
+    },
+    {
+      title: "Service Provider Quote",
+      fields: [
+        { label: "Service amount (quoted)", value: formatCurrency(job.quoted_service_amount) },
+        { label: "ETA (minutes)", value: job.eta_minutes ?? "-" },
+        { label: "Vendor ETA (raw)", value: job.vendor_eta ?? "-" },
+        { label: "GOA (Gone on Arrival)", value: job.goa ? "Yes" : "No" },
+      ],
+    },
+    {
+      title: "Financials & Payment",
       fields: [
         { label: "Job amount", value: formatCurrency(job.job_amount) },
         { label: "Vendor fee", value: formatCurrency(job.vendors_fee) },
@@ -134,23 +188,17 @@ export default async function JobDetailPage({
         { label: "Profit", value: formatCurrency(job.profit) },
         { label: "Charged via", value: job.customer_charged_via ?? "-" },
         { label: "Paid via", value: job.vendor_paid_via ?? "-" },
-      ],
-    },
-    {
-      title: "Dispatch / ETA",
-      fields: [
-        { label: "ETA (minutes)", value: job.eta_minutes ?? "-" },
-        { label: "Appointment date & time", value: formatDateTime(job.appointment_at) },
-        { label: "Time converted", value: formatDateTime(job.time_converted) },
-        { label: "Time dispatched", value: formatDateTime(job.time_dispatched) },
-        { label: "Dispatched / appt notes", value: job.dispatched_time ?? "-" },
-        { label: "Vendor ETA (raw)", value: job.vendor_eta ?? "-" },
+        { label: "Vendor card (last 4)", value: job.last4_vpc ?? "-" },
+        { label: "Card expiry", value: job.card_expiry ?? "-" },
+        { label: "Billing address", value: job.billing_address ?? "-" },
+        { label: "TL quote", value: formatCurrency(job.tl_quote) },
+        { label: "TL ETA (minutes)", value: job.tl_eta_minutes ?? "-" },
+        { label: "Quoted by dispatcher", value: job.quoted_by_dispatcher ?? "-" },
       ],
     },
     {
       title: "Other (from Excel upload)",
       fields: [
-        { label: "Last 4 of VPC", value: job.last4_vpc ?? "-" },
         { label: "Reviewed by", value: job.reviewed_by ?? "-" },
         { label: "Call que", value: job.call_que ?? "-" },
         { label: "Brex check", value: job.brex_check ?? "-" },
@@ -185,6 +233,7 @@ export default async function JobDetailPage({
         agentOptions={agentOptions}
         currentRole={profile?.role}
         currentAgentName={profile?.agent_name}
+        contactedVendors={(contactedVendors ?? []) as (ContactedVendorRow & { id: string })[]}
       />
 
       {sections.map((section) => (
@@ -200,6 +249,36 @@ export default async function JobDetailPage({
           </div>
         </div>
       ))}
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold">Contacted Vendors</h2>
+        <div className="overflow-hidden rounded-lg border border-black/10">
+          {contactedVendors && contactedVendors.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead className="bg-black/5 text-left">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Vendor name</th>
+                  <th className="px-4 py-2 font-medium">Phone number</th>
+                  <th className="px-4 py-2 font-medium">ETA given</th>
+                  <th className="px-4 py-2 font-medium">GOA</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contactedVendors.map((v) => (
+                  <tr key={v.id} className="border-t border-black/10">
+                    <td className="px-4 py-2">{v.vendor_name ?? "-"}</td>
+                    <td className="px-4 py-2">{v.phone_number ?? "-"}</td>
+                    <td className="px-4 py-2">{v.eta_given ?? "-"}</td>
+                    <td className="px-4 py-2">{v.goa ? "Yes" : "No"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="p-4 text-sm text-black/50">No vendors contacted yet.</p>
+          )}
+        </div>
+      </div>
 
       <JobInvoicesSection
         job={{

@@ -192,5 +192,76 @@ export function jobFieldsFromForm(formData: FormData) {
     wc_entered_by_jon: strOrNull(formData.get("wc_entered_by_jon")),
     final_checked_by_zumi: strOrNull(formData.get("final_checked_by_zumi")),
     pending_completion_substatus: strOrNull(formData.get("pending_completion_substatus")),
+
+    // Client Details
+    client_company_name: strOrNull(formData.get("client_company_name")),
+    client_email: strOrNull(formData.get("client_email")),
+    phone_extension: strOrNull(formData.get("phone_extension")),
+
+    // Service Location
+    service_street_address: strOrNull(formData.get("service_street_address")),
+    service_unit: strOrNull(formData.get("service_unit")),
+    service_city: strOrNull(formData.get("service_city")),
+    service_zip: strOrNull(formData.get("service_zip")),
+    service_country: strOrNull(formData.get("service_country")),
+    service_latitude: numberOrNull(formData.get("service_latitude")),
+    service_longitude: numberOrNull(formData.get("service_longitude")),
+
+    // Job Details
+    job_name: strOrNull(formData.get("job_name")),
+    job_type: strOrNull(formData.get("job_type")),
+
+    // Schedule
+    schedule_start_at: datetimeLocalPHTToIso(formData.get("schedule_start_at")),
+    schedule_end_at: datetimeLocalPHTToIso(formData.get("schedule_end_at")),
+    is_all_day: formData.get("is_all_day") === "on",
+
+    // Service Provider Quote
+    quoted_service_amount: numberOrNull(formData.get("quoted_service_amount")),
+    goa: formData.get("goa") === "on",
+
+    // Additional Quotes / Payment Information — no CVV or full card number is
+    // ever parsed here, per the security requirement (see schema.sql).
+    tl_quote: numberOrNull(formData.get("tl_quote")),
+    tl_eta_minutes: numberOrNull(formData.get("tl_eta_minutes")),
+    quoted_by_dispatcher: strOrNull(formData.get("quoted_by_dispatcher")),
+    card_expiry: strOrNull(formData.get("card_expiry")),
+    billing_address: strOrNull(formData.get("billing_address")),
   };
+}
+
+export interface ContactedVendorRow {
+  vendor_name: string | null;
+  phone_number: string | null;
+  eta_given: string | null;
+  goa: boolean;
+}
+
+// The Contacted Vendors list is a client-managed repeatable row group (add/
+// remove rows), so it's submitted as one JSON blob rather than parallel
+// same-name fields — a checkbox (GOA) only appears in FormData when checked,
+// which would silently misalign rows if zipped positionally.
+export function contactedVendorsFromForm(formData: FormData): ContactedVendorRow[] {
+  const raw = formData.get("contacted_vendors_json");
+  if (!raw) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  const rows: ContactedVendorRow[] = [];
+  for (const item of parsed) {
+    if (typeof item !== "object" || item === null) continue;
+    const row = item as Record<string, unknown>;
+    const vendor_name = typeof row.vendor_name === "string" ? row.vendor_name.trim() || null : null;
+    const phone_number = typeof row.phone_number === "string" ? row.phone_number.trim() || null : null;
+    const eta_given = typeof row.eta_given === "string" ? row.eta_given.trim() || null : null;
+    if (!vendor_name && !phone_number && !eta_given) continue;
+    rows.push({ vendor_name, phone_number, eta_given, goa: row.goa === true });
+  }
+  return rows;
 }

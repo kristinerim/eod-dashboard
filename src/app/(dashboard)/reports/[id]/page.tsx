@@ -5,6 +5,9 @@ import RealtimeRefresh from "@/components/RealtimeRefresh";
 import { summarizeJobs, todayISO } from "@/lib/aggregate";
 import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/profile";
 import { rolloverStaleAppointments } from "@/lib/rollover";
+import { fetchAllRows } from "@/lib/supabase/paginate";
+import type { OpenLead } from "./JobForm";
+import type { ContactedVendorRow } from "./job-fields";
 
 function formatCurrency(n: number) {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -49,6 +52,25 @@ export default async function ReportDetailPage({
   const profile = await getCurrentProfile();
   const canDelete = isSupervisor(profile?.role);
   const agentOptions = await getAgentNameOptions();
+
+  const openLeads = await fetchAllRows<OpenLead>(() =>
+    supabase
+      .from("leads")
+      .select("id, lead_number, customer_name, customer_phone, state, notes")
+      .eq("status", "open")
+  );
+
+  const jobIds = jobList.map((j) => j.id);
+  const contactedVendorRows = await fetchAllRows<ContactedVendorRow & { id: string; job_id: string }>(() =>
+    supabase
+      .from("job_contacted_vendors")
+      .select("id, job_id, vendor_name, phone_number, eta_given, goa")
+      .in("job_id", jobIds.length > 0 ? jobIds : [""])
+  );
+  const contactedVendorsByJobId: Record<string, (ContactedVendorRow & { id: string })[]> = {};
+  for (const row of contactedVendorRows) {
+    (contactedVendorsByJobId[row.job_id] ??= []).push(row);
+  }
 
   const cards = [
     { label: "Total profit", value: formatCurrency(summary.totalProfit) },
@@ -137,6 +159,8 @@ export default async function ReportDetailPage({
           agentOptions={agentOptions}
           currentRole={profile?.role}
           currentAgentName={profile?.agent_name}
+          openLeads={openLeads}
+          contactedVendorsByJobId={contactedVendorsByJobId}
         />
       </div>
     </div>

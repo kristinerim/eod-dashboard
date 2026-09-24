@@ -3,9 +3,10 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import JobForm from "./JobForm";
+import JobForm, { type OpenLead } from "./JobForm";
 import { deleteJob } from "./job-actions";
 import { needsRefund } from "@/lib/aggregate";
+import type { ContactedVendorRow } from "./job-fields";
 
 export interface Job {
   id: string;
@@ -40,6 +41,28 @@ export interface Job {
   wc_entered_by_jon: string | null;
   final_checked_by_zumi: string | null;
   notes: string | null;
+  client_company_name: string | null;
+  client_email: string | null;
+  phone_extension: string | null;
+  service_street_address: string | null;
+  service_unit: string | null;
+  service_city: string | null;
+  service_zip: string | null;
+  service_country: string | null;
+  service_latitude: number | null;
+  service_longitude: number | null;
+  job_name: string | null;
+  job_type: string | null;
+  schedule_start_at: string | null;
+  schedule_end_at: string | null;
+  is_all_day: boolean | null;
+  quoted_service_amount: number | null;
+  goa: boolean | null;
+  tl_quote: number | null;
+  tl_eta_minutes: number | null;
+  quoted_by_dispatcher: string | null;
+  card_expiry: string | null;
+  billing_address: string | null;
 }
 
 type Column = {
@@ -54,6 +77,8 @@ const COLUMNS: Column[] = [
   { key: "agent", label: "Agent" },
   { key: "dispatcher", label: "Dispatcher" },
   { key: "job_number", label: "Job #" },
+  { key: "job_name", label: "Job name" },
+  { key: "job_type", label: "Job type" },
   { key: "job_amount", label: "Job amount", currency: true },
   { key: "vendors_fee", label: "Vendor fee", currency: true },
   { key: "refunded_to_client", label: "Refunded", currency: true },
@@ -110,6 +135,8 @@ export default function JobsTable({
   agentOptions,
   currentRole,
   currentAgentName,
+  openLeads,
+  contactedVendorsByJobId,
 }: {
   jobs: Job[];
   reportId: string;
@@ -118,6 +145,8 @@ export default function JobsTable({
   agentOptions?: string[];
   currentRole?: string;
   currentAgentName?: string | null;
+  openLeads?: OpenLead[];
+  contactedVendorsByJobId?: Record<string, (ContactedVendorRow & { id: string })[]>;
 }) {
   const canEditJob = (job: Job) =>
     currentRole !== "agent" || job.agent === currentAgentName;
@@ -315,6 +344,7 @@ export default function JobsTable({
           agentOptions={agentOptions}
           currentRole={currentRole}
           currentAgentName={currentAgentName}
+          openLeads={openLeads}
         />
       )}
       {editingJob && (
@@ -325,6 +355,7 @@ export default function JobsTable({
           agentOptions={agentOptions}
           currentRole={currentRole}
           currentAgentName={currentAgentName}
+          contactedVendors={contactedVendorsByJobId?.[editingJob.id]}
         />
       )}
     </div>
