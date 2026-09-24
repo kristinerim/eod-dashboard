@@ -772,3 +772,49 @@ begin
     alter publication supabase_realtime add table job_notes;
   end if;
 end $$;
+
+-- Void (soft-remove, agent-or-admin, own note only) and permanent delete
+-- (admin only) for job_notes. The note's content itself stays immutable even
+-- under a bug — see the trigger below — only these two specific, permission-
+-- gated mutations are possible now, not arbitrary edits.
+alter table job_notes add column if not exists voided_at timestamptz;
+alter table job_notes add column if not exists voided_by uuid references auth.users(id) on delete set null;
+alter table job_notes add column if not exists voided_by_name text;
+
+create or replace function job_notes_prevent_content_edit() returns trigger
+language plpgsql as $$
+begin
+  if new.note is distinct from old.note
+     or new.author is distinct from old.author
+     or new.job_id is distinct from old.job_id
+     or new.created_by is distinct from old.created_by
+     or new.created_at is distinct from old.created_at then
+    raise exception 'job_notes content is immutable — only voided_at/voided_by/voided_by_name may change';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists job_notes_prevent_content_edit_trigger on job_notes;
+create trigger job_notes_prevent_content_edit_trigger
+  before update on job_notes
+  for each row execute function job_notes_prevent_content_edit();
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'job_notes' and policyname = 'authenticated can void their own or admins can void any'
+  ) then
+    create policy "authenticated can void their own or admins can void any" on job_notes
+      for update to authenticated
+      using (created_by = auth.uid() or is_full_admin())
+      with check (created_by = auth.uid() or is_full_admin());
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'job_notes' and policyname = 'full admins can permanently delete job notes'
+  ) then
+    create policy "full admins can permanently delete job notes" on job_notes
+      for delete to authenticated using (is_full_admin());
+  end if;
+end $$;

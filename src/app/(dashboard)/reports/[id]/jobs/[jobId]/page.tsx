@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/profile";
+import { getCurrentProfile, getAgentNameOptions, isSupervisor, isFullAdmin } from "@/lib/profile";
 import { needsRefund } from "@/lib/aggregate";
 import type { Job } from "../../JobsTable";
 import type { Invoice } from "../../../../invoices/InvoicesTable";
@@ -64,6 +64,9 @@ export default async function JobDetailPage({
   const profile = await getCurrentProfile();
   const canDelete = isSupervisor(profile?.role);
   const agentOptions = await getAgentNameOptions();
+  const {
+    data: { user: currentUser },
+  } = await supabase.auth.getUser();
 
   let leadLink: { id: string; leadNumber: string } | null = null;
   if (job.lead_id) {
@@ -89,7 +92,7 @@ export default async function JobDetailPage({
 
   const { data: jobNotes } = await supabase
     .from("job_notes")
-    .select("id, note, author, created_at")
+    .select("id, note, author, created_at, created_by, voided_at, voided_by_name")
     .eq("job_id", jobId)
     .order("created_at", { ascending: false });
 
@@ -277,7 +280,13 @@ export default async function JobDetailPage({
         </div>
       ))}
 
-      <JobNotesSection jobId={jobId} reportId={id} notes={(jobNotes ?? []) as JobNote[]} />
+      <JobNotesSection
+        jobId={jobId}
+        reportId={id}
+        notes={(jobNotes ?? []) as JobNote[]}
+        currentUserId={currentUser?.id ?? null}
+        isFullAdmin={isFullAdmin(profile?.role)}
+      />
 
       {sections.slice(jobDetailsIndex + 1).map((section) => (
         <div key={section.title}>

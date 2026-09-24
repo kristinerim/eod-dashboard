@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireSupervisor } from "@/lib/profile";
+import { requireSupervisor, requireFullAdmin, isFullAdmin, getCurrentProfile } from "@/lib/profile";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -140,11 +140,10 @@ export async function updateJobQuickField(
   return { success: true };
 }
 
-// Append-only running history (job_notes) — distinct from the single
-// jobs.notes field. No update/delete action exists here at all, matching the
-// table's RLS (no update/delete policy): once added, a note can't be
-// changed or removed. Any signed-in team member can add one, same as the
-// quick-edit fields above.
+// Running history (job_notes) — distinct from the single jobs.notes field.
+// A note's content can never be changed once added (enforced by a DB trigger,
+// see schema.sql) — the only mutations possible are voiding (below) and an
+// admin's permanent delete. Any signed-in team member can add one.
 export async function addJobNote(
   jobId: string,
   reportId: string,
@@ -169,6 +168,65 @@ export async function addJobNote(
   const { error } = await supabase
     .from("job_notes")
     .insert({ job_id: jobId, note: trimmed, author, created_by: user.id });
+  if (error) return { error: error.message };
+
+  revalidateJob(reportId, jobId);
+  return { success: true };
+}
+
+// Soft-remove: struck through and excluded from "latest note" on the
+// dashboard, but the original note/timestamp/author stay visible for audit —
+// enforced by the RLS policy + trigger in schema.sql, not just this check.
+// An agent can only void their own note; a full admin can void any note.
+export async function voidJobNote(
+  noteId: string,
+  jobId: string,
+  reportId: string
+): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("job_notes")
+    .select("created_by, voided_at")
+    .eq("id", noteId)
+    .single();
+  if (fetchError || !existing) return { error: fetchError?.message ?? "Update not found." };
+
+  const profile = await getCurrentProfile();
+  if (existing.created_by !== user.id && !isFullAdmin(profile?.role)) {
+    return { error: "You can only void your own updates." };
+  }
+
+  if (existing.voided_at) return { success: true };
+
+  const voided_by_name = profile?.agent_name ?? user.email ?? "Unknown";
+
+  const { error } = await supabase
+    .from("job_notes")
+    .update({ voided_at: new Date().toISOString(), voided_by: user.id, voided_by_name })
+    .eq("id", noteId);
+  if (error) return { error: error.message };
+
+  revalidateJob(reportId, jobId);
+  return { success: true };
+}
+
+// Permanent delete — full admins only (requireFullAdmin, same helper used
+// elsewhere for admin-gated actions). Actually removes the row, unlike void.
+export async function deleteJobNotePermanently(
+  noteId: string,
+  jobId: string,
+  reportId: string
+): Promise<ActionResult> {
+  const check = await requireFullAdmin();
+  if (!check.ok) return { error: check.error };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("job_notes").delete().eq("id", noteId);
   if (error) return { error: error.message };
 
   revalidateJob(reportId, jobId);

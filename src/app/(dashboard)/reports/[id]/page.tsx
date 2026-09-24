@@ -72,15 +72,17 @@ export default async function ReportDetailPage({
     (contactedVendorsByJobId[row.job_id] ??= []).push(row);
   }
 
-  // Latest note per job for the dashboard's "Latest Note" column — pulled
-  // from the same job_notes history shown in full on each job's own page,
-  // reduced to the single newest row per job.
+  // Latest ACTIVE note per job for the dashboard's "Latest Note" column —
+  // pulled from the same job_notes history shown in full on each job's own
+  // page, reduced to the single newest non-voided row per job. A voided note
+  // is excluded entirely, so the next most recent active one naturally wins.
   const jobNoteRows = await fetchAllRows<{ job_id: string; note: string; author: string | null; created_at: string }>(
     () =>
       supabase
         .from("job_notes")
         .select("job_id, note, author, created_at")
         .in("job_id", jobIds.length > 0 ? jobIds : [""])
+        .is("voided_at", null)
         .order("created_at", { ascending: false })
   );
   const latestNoteByJobId: Record<string, { note: string; author: string | null; created_at: string }> = {};

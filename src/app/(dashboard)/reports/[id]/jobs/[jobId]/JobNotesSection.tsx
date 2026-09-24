@@ -2,13 +2,16 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { addJobNote } from "./actions";
+import { addJobNote, voidJobNote, deleteJobNotePermanently } from "./actions";
 
 export interface JobNote {
   id: string;
   note: string;
   author: string | null;
   created_at: string;
+  created_by: string | null;
+  voided_at: string | null;
+  voided_by_name: string | null;
 }
 
 function formatDateTime(d: string) {
@@ -31,10 +34,14 @@ export default function JobNotesSection({
   jobId,
   reportId,
   notes,
+  currentUserId,
+  isFullAdmin,
 }: {
   jobId: string;
   reportId: string;
   notes: JobNote[];
+  currentUserId: string | null;
+  isFullAdmin: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -52,6 +59,31 @@ export default function JobNotesSection({
         return;
       }
       if (textareaRef.current) textareaRef.current.value = "";
+      router.refresh();
+    });
+  }
+
+  function handleVoid(noteId: string) {
+    setError(null);
+    startTransition(async () => {
+      const result = await voidJobNote(noteId, jobId, reportId);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  function handleDelete(noteId: string) {
+    if (!confirm("Are you sure you want to permanently delete this update?")) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteJobNotePermanently(noteId, jobId, reportId);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
       router.refresh();
     });
   }
@@ -83,14 +115,51 @@ export default function JobNotesSection({
           <p className="text-sm text-black/50">No updates yet.</p>
         ) : (
           <div className="space-y-3 border-t border-black/10 pt-3">
-            {notes.map((n) => (
-              <div key={n.id} className="text-sm">
-                <div className="font-medium text-black/70">
-                  {formatDateTime(n.created_at)} | {n.author ?? "Unknown"}
+            {notes.map((n) => {
+              const isVoided = !!n.voided_at;
+              const canVoid = !isVoided && (n.created_by === currentUserId || isFullAdmin);
+              return (
+                <div key={n.id} className="text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className={`font-medium text-black/70 ${isVoided ? "line-through" : ""}`}>
+                        {formatDateTime(n.created_at)} | {n.author ?? "Unknown"}
+                      </div>
+                      <div className={`whitespace-pre-wrap text-black/90 ${isVoided ? "line-through" : ""}`}>
+                        {n.note}
+                      </div>
+                      {isVoided && (
+                        <div className="text-xs text-black/50">
+                          Voided: {formatDateTime(n.voided_at!)} | {n.voided_by_name ?? "Unknown"}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      {canVoid && (
+                        <button
+                          type="button"
+                          onClick={() => handleVoid(n.id)}
+                          disabled={isPending}
+                          className="text-xs text-black/50 hover:text-black hover:underline disabled:opacity-50"
+                        >
+                          Void
+                        </button>
+                      )}
+                      {isFullAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(n.id)}
+                          disabled={isPending}
+                          className="text-xs text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <div className="whitespace-pre-wrap text-black/90">{n.note}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
