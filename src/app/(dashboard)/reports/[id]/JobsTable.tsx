@@ -60,6 +60,7 @@ export interface Job {
   is_all_day: boolean | null;
   quoted_service_amount: number | null;
   goa: boolean | null;
+  goa_amount: number | null;
   tl_quote: number | null;
   tl_eta_minutes: number | null;
   quoted_by_dispatcher: string | null;

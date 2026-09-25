@@ -56,6 +56,7 @@ function newVendorRow(): VendorRow {
     phone_number: "",
     eta_given: "",
     goa: false,
+    goa_amount: null,
   };
 }
 
@@ -96,6 +97,8 @@ export default function JobForm({
   const [etaMinutes, setEtaMinutes] = useState(job?.eta_minutes?.toString() ?? "");
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [vendorRows, setVendorRows] = useState<VendorRow[]>(contactedVendors ?? []);
+  const [goa, setGoa] = useState(job?.goa ?? false);
+  const [goaAmount, setGoaAmount] = useState(job?.goa_amount?.toString() ?? "");
   const isPendingCompletion = jobStatus === PENDING_COMPLETION_STATUS;
   const isDispatchedSelected = jobStatus.trim().toLowerCase() === "dispatched";
   const needsTimeDispatched = isDispatchedSelected && !timeDispatched;
@@ -139,6 +142,17 @@ export default function JobForm({
 
     if (needsEtaUpdateOnDispatch) {
       setError("Update the ETA before dispatching this job.");
+      return;
+    }
+
+    if (goa && goaAmount.trim() === "") {
+      setError("Enter the GOA amount.");
+      return;
+    }
+
+    const vendorMissingGoaAmount = vendorRows.find((r) => r.goa && r.goa_amount === null);
+    if (vendorMissingGoaAmount) {
+      setError(`Enter the GOA amount for ${vendorMissingGoaAmount.vendor_name || "the contacted vendor"}.`);
       return;
     }
 
@@ -565,9 +579,27 @@ export default function JobForm({
               </p>
             )}
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="goa" defaultChecked={job?.goa ?? false} />
+              <input
+                type="checkbox"
+                name="goa"
+                checked={goa}
+                onChange={(e) => setGoa(e.target.checked)}
+              />
               GOA (Gone on Arrival)
             </label>
+            {goa && (
+              <Field label="GOA amount (required)">
+                <input
+                  name="goa_amount"
+                  type="number"
+                  step="0.01"
+                  required
+                  value={goaAmount}
+                  onChange={(e) => setGoaAmount(e.target.value)}
+                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                />
+              </Field>
+            )}
           </Section>
 
           {/* 6. Contacted Vendors */}
@@ -622,6 +654,24 @@ export default function JobForm({
                       ✕
                     </button>
                   </div>
+                  {row.goa && (
+                    <div className="col-span-12">
+                      <Field label="GOA amount (required)">
+                        <input
+                          type="number"
+                          step="0.01"
+                          required
+                          value={row.goa_amount ?? ""}
+                          onChange={(e) =>
+                            updateVendorRow(row.id, {
+                              goa_amount: e.target.value === "" ? null : Number(e.target.value),
+                            })
+                          }
+                          className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                        />
+                      </Field>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

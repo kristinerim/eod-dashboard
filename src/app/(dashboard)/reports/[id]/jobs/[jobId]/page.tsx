@@ -86,7 +86,7 @@ export default async function JobDetailPage({
 
   const { data: contactedVendors } = await supabase
     .from("job_contacted_vendors")
-    .select("id, vendor_name, phone_number, eta_given, goa")
+    .select("id, vendor_name, phone_number, eta_given, goa, goa_amount")
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
 
@@ -191,6 +191,7 @@ export default async function JobDetailPage({
         { label: "ETA (minutes)", value: job.eta_minutes ?? "-" },
         { label: "Vendor ETA (raw)", value: job.vendor_eta ?? "-" },
         { label: "GOA (Gone on Arrival)", value: job.goa ? "Yes" : "No" },
+        ...(job.goa ? [{ label: "GOA Amount", value: formatCurrency(job.goa_amount) }] : []),
       ],
     },
     {
@@ -313,6 +314,7 @@ export default async function JobDetailPage({
                   <th className="px-4 py-2 font-medium">Phone number</th>
                   <th className="px-4 py-2 font-medium">ETA given</th>
                   <th className="px-4 py-2 font-medium">GOA</th>
+                  <th className="px-4 py-2 font-medium">GOA Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -322,6 +324,7 @@ export default async function JobDetailPage({
                     <td className="px-4 py-2">{v.phone_number ?? "-"}</td>
                     <td className="px-4 py-2">{v.eta_given ?? "-"}</td>
                     <td className="px-4 py-2">{v.goa ? "Yes" : "No"}</td>
+                    <td className="px-4 py-2">{v.goa ? formatCurrency(v.goa_amount) : "-"}</td>
                   </tr>
                 ))}
               </tbody>

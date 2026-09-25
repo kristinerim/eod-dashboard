@@ -15,6 +15,8 @@ import {
   validatePendingCompletionSubstatus,
   validateTimeDispatchedRequired,
   validateUniqueJobNumber,
+  validateGoaAmount,
+  validateContactedVendorsGoaAmounts,
   isCancelledJobStatus,
   isCompletedJobStatus,
   isPendingCompletionStatus,
@@ -93,6 +95,12 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     fields.pending_completion_substatus
   );
   if (substatusError) return { error: substatusError };
+
+  const goaError = validateGoaAmount(fields.goa, fields.goa_amount);
+  if (goaError) return { error: goaError };
+
+  const vendorsGoaError = validateContactedVendorsGoaAmounts(contactedVendorsFromForm(formData));
+  if (vendorsGoaError) return { error: vendorsGoaError };
 
   const profile = await getCurrentProfile();
   if (!isSupervisor(profile?.role)) {
@@ -261,6 +269,12 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
     fields.pending_completion_substatus
   );
   if (substatusError) return { error: substatusError };
+
+  const goaError = validateGoaAmount(fields.goa, fields.goa_amount);
+  if (goaError) return { error: goaError };
+
+  const vendorsGoaError = validateContactedVendorsGoaAmounts(contactedVendorsFromForm(formData));
+  if (vendorsGoaError) return { error: vendorsGoaError };
 
   const profile = await getCurrentProfile();
   if (!isSupervisor(profile?.role)) {

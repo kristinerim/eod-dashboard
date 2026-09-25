@@ -247,6 +247,7 @@ export function jobFieldsFromForm(formData: FormData) {
     // Service Provider Quote
     quoted_service_amount: numberOrNull(formData.get("quoted_service_amount")),
     goa: formData.get("goa") === "on",
+    goa_amount: numberOrNull(formData.get("goa_amount")),
 
     // Additional Quotes / Payment Information — no CVV or full card number is
     // ever parsed here, per the security requirement (see schema.sql).
@@ -263,6 +264,7 @@ export interface ContactedVendorRow {
   phone_number: string | null;
   eta_given: string | null;
   goa: boolean;
+  goa_amount: number | null;
 }
 
 // The Contacted Vendors list is a client-managed repeatable row group (add/
@@ -289,7 +291,26 @@ export function contactedVendorsFromForm(formData: FormData): ContactedVendorRow
     const phone_number = typeof row.phone_number === "string" ? row.phone_number.trim() || null : null;
     const eta_given = typeof row.eta_given === "string" ? row.eta_given.trim() || null : null;
     if (!vendor_name && !phone_number && !eta_given) continue;
-    rows.push({ vendor_name, phone_number, eta_given, goa: row.goa === true });
+    const goa_amount = typeof row.goa_amount === "number" && !Number.isNaN(row.goa_amount) ? row.goa_amount : null;
+    rows.push({ vendor_name, phone_number, eta_given, goa: row.goa === true, goa_amount });
   }
   return rows;
+}
+
+// GOA (Gone on Arrival) always needs a dollar amount to mean anything — a
+// vendor showing up and leaving without doing the job is only useful data
+// once you know what that cost. Applies everywhere GOA is recorded: the
+// job's own Service Provider Quote and each Contacted Vendor row.
+export function validateGoaAmount(goa: boolean, goaAmount: number | null): string | null {
+  if (goa && goaAmount === null) return "Enter the GOA amount.";
+  return null;
+}
+
+export function validateContactedVendorsGoaAmounts(rows: ContactedVendorRow[]): string | null {
+  for (const row of rows) {
+    if (row.goa && row.goa_amount === null) {
+      return `Enter the GOA amount for ${row.vendor_name ?? "the contacted vendor"}.`;
+    }
+  }
+  return null;
 }

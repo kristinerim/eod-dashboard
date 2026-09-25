@@ -827,3 +827,9 @@ alter table jobs add column if not exists trailer_weight text;
 alter table jobs add column if not exists trailer_length text;
 alter table jobs add column if not exists trailer_width text;
 alter table jobs add column if not exists trailer_height text;
+
+-- GOA (Gone on Arrival) always needs a dollar amount to mean anything —
+-- enforced in app code (see validateGoaAmount / validateContactedVendorsGoaAmounts
+-- in job-fields.ts), applied everywhere GOA is recorded.
+alter table jobs add column if not exists goa_amount numeric;
+alter table job_contacted_vendors add column if not exists goa_amount numeric;
