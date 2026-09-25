@@ -25,7 +25,13 @@ export type JobDetailFieldKey =
   | "locking_lug_nut"
   | "number_of_gallons"
   | "fuel_type"
-  | "tire_size";
+  | "tire_size"
+  | "trailer_type"
+  | "loaded_with"
+  | "trailer_weight"
+  | "trailer_length"
+  | "trailer_width"
+  | "trailer_height";
 
 interface JobDetailFieldDef {
   label: string;
@@ -56,6 +62,12 @@ export const JOB_DETAIL_FIELD_DEFS: Record<JobDetailFieldKey, JobDetailFieldDef>
   number_of_gallons: { label: "Number of Gallons", kind: "number" },
   fuel_type: { label: "Fuel Type", kind: "select", options: FUEL_TYPE_OPTIONS },
   tire_size: { label: "Tire Size", kind: "text" },
+  trailer_type: { label: "Type of Trailer Attached", kind: "text" },
+  loaded_with: { label: "Loaded With", kind: "text" },
+  trailer_weight: { label: "Weight", kind: "text" },
+  trailer_length: { label: "Length", kind: "text" },
+  trailer_width: { label: "Width", kind: "text" },
+  trailer_height: { label: "Height", kind: "text" },
 };
 
 const VEHICLE_BASE: JobDetailFieldKey[] = ["year_make_model", "vin_or_lpn", "color", "issue"];
@@ -129,7 +141,17 @@ export const JOB_TYPE_FIELD_KEYS: Record<string, JobDetailFieldKey[]> = {
     "distance_miles",
     ...CARD_FIELDS,
   ],
-  "Heavy Duty Winch Out": [...VEHICLE_BASE, "service_location", ...CARD_FIELDS],
+  "Heavy Duty Winch Out": [
+    ...VEHICLE_BASE,
+    "trailer_type",
+    "loaded_with",
+    "trailer_weight",
+    "trailer_length",
+    "trailer_width",
+    "trailer_height",
+    "service_location",
+    ...CARD_FIELDS,
+  ],
   "Fuel Delivery": [
     ...VEHICLE_BASE,
     "number_of_gallons",

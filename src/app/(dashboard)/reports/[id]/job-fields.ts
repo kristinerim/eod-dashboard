@@ -232,6 +232,12 @@ export function jobFieldsFromForm(formData: FormData) {
     number_of_gallons: numberOrNull(formData.get("number_of_gallons")),
     fuel_type: strOrNull(formData.get("fuel_type")),
     tire_size: strOrNull(formData.get("tire_size")),
+    trailer_type: strOrNull(formData.get("trailer_type")),
+    loaded_with: strOrNull(formData.get("loaded_with")),
+    trailer_weight: strOrNull(formData.get("trailer_weight")),
+    trailer_length: strOrNull(formData.get("trailer_length")),
+    trailer_width: strOrNull(formData.get("trailer_width")),
+    trailer_height: strOrNull(formData.get("trailer_height")),
 
     // Schedule
     schedule_start_at: datetimeLocalPHTToIso(formData.get("schedule_start_at")),

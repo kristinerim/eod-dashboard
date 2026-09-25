@@ -82,6 +82,12 @@ export interface Job {
   number_of_gallons: number | null;
   fuel_type: string | null;
   tire_size: string | null;
+  trailer_type: string | null;
+  loaded_with: string | null;
+  trailer_weight: string | null;
+  trailer_length: string | null;
+  trailer_width: string | null;
+  trailer_height: string | null;
 }
 
 type Column = {

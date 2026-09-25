@@ -818,3 +818,12 @@ begin
       for delete to authenticated using (is_full_admin());
   end if;
 end $$;
+
+-- Heavy Duty Winch Out — trailer details, added alongside its existing
+-- fields (see src/lib/jobTypeFields.ts).
+alter table jobs add column if not exists trailer_type text;
+alter table jobs add column if not exists loaded_with text;
+alter table jobs add column if not exists trailer_weight text;
+alter table jobs add column if not exists trailer_length text;
+alter table jobs add column if not exists trailer_width text;
+alter table jobs add column if not exists trailer_height text;
