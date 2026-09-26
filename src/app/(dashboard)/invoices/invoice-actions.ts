@@ -171,6 +171,13 @@ export async function updateInvoice(invoiceId: string, formData: FormData): Prom
   const { supabase, invoice, reportId } = check;
 
   if (invoice.status !== "Draft") return { error: "Only a Draft invoice can be edited." };
+  // Independent of payment status — a customer may sign a still-"Draft"
+  // invoice, and once they have, its charges/details must never change out
+  // from under the document they already agreed to. Create a new invoice
+  // for a new authorization instead.
+  if (invoice.signature_status === "Signed") {
+    return { error: "This invoice has been signed and can no longer be edited. Create a new invoice instead." };
+  }
 
   const permissionError = await requireInvoicePermission(invoice.job_id);
   if (permissionError) return { error: permissionError };
@@ -260,6 +267,30 @@ export async function recordInvoicePayment(invoiceId: string, amount: number): P
       status,
       paid_at: isFullyPaid && !invoice.paid_at ? now : invoice.paid_at,
     })
+    .eq("id", invoiceId);
+
+  if (error) return { error: error.message };
+  revalidateInvoice(reportId, invoice.job_id, invoiceId);
+  return { success: true };
+}
+
+// Doesn't send anything itself (no email provider is wired up yet) — it just
+// flips signature_status to "Sent" and stamps when, so the team can copy the
+// /sign/[token] link (built client-side from invoice.signature_token) and
+// share it however they like (SMS, email, etc.).
+export async function sendInvoiceForSignature(invoiceId: string): Promise<ActionResult> {
+  const check = await requireInvoiceContext(invoiceId);
+  if (!check.ok) return { error: check.error };
+  const { supabase, invoice, reportId } = check;
+
+  if (invoice.signature_status === "Signed") return { error: "This invoice has already been signed." };
+
+  const permissionError = await requireInvoicePermission(invoice.job_id);
+  if (permissionError) return { error: permissionError };
+
+  const { error } = await supabase
+    .from("invoices")
+    .update({ signature_status: "Sent", signature_sent_at: new Date().toISOString() })
     .eq("id", invoiceId);
 
   if (error) return { error: error.message };

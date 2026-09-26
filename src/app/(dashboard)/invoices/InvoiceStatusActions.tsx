@@ -61,24 +61,24 @@ export default function InvoiceStatusActions({
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
+        {invoice.status === "Draft" && invoice.signature_status !== "Signed" && (
+          <button
+            onClick={() => setEditing(true)}
+            className="rounded border border-black/20 px-4 py-1.5 text-sm"
+            type="button"
+          >
+            Edit
+          </button>
+        )}
         {invoice.status === "Draft" && (
-          <>
-            <button
-              onClick={() => setEditing(true)}
-              className="rounded border border-black/20 px-4 py-1.5 text-sm"
-              type="button"
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => handleSetStatus("Sent")}
-              disabled={isPending}
-              className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              type="button"
-            >
-              Mark sent
-            </button>
-          </>
+          <button
+            onClick={() => handleSetStatus("Sent")}
+            disabled={isPending}
+            className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+            type="button"
+          >
+            Mark sent
+          </button>
         )}
         {(invoice.status === "Sent" || invoice.status === "Partially Paid") && (
           <button

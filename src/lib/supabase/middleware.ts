@@ -30,8 +30,11 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  // The customer signing link is deliberately public — no account, no login.
+  // Its own authorization is the unguessable token in the URL, not a session.
+  const isPublicSignPage = request.nextUrl.pathname.startsWith("/sign/");
 
-  if (!user && !isLoginPage) {
+  if (!user && !isLoginPage && !isPublicSignPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

@@ -3,11 +3,16 @@
 import { useState } from "react";
 import Link from "next/link";
 import InvoiceForm from "../../../../invoices/InvoiceForm";
-import { InvoiceStatusBadge, type Invoice } from "../../../../invoices/InvoicesTable";
+import { InvoiceStatusBadge, SignatureStatusBadge, type Invoice } from "../../../../invoices/InvoicesTable";
 
 function formatCurrency(n: number | null) {
   if (n === null) return "-";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function formatDateTime(iso: string | null) {
+  if (!iso) return "-";
+  return new Date(iso).toLocaleString("en-US", { timeZone: "Asia/Manila" });
 }
 
 interface JobDefaults {
@@ -55,6 +60,8 @@ export default function JobInvoicesSection({
                 <th className="px-4 py-2 font-medium">Amount</th>
                 <th className="px-4 py-2 font-medium">Paid</th>
                 <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">Signature</th>
+                <th className="px-4 py-2 font-medium">Signed</th>
               </tr>
             </thead>
             <tbody>
@@ -69,6 +76,20 @@ export default function JobInvoicesSection({
                   <td className="px-4 py-2">{formatCurrency(inv.amount_paid)}</td>
                   <td className="px-4 py-2">
                     <InvoiceStatusBadge status={inv.status} />
+                  </td>
+                  <td className="px-4 py-2">
+                    <SignatureStatusBadge status={inv.signature_status} />
+                  </td>
+                  <td className="px-4 py-2">
+                    {inv.signature_status === "Signed" ? (
+                      <>
+                        {inv.signed_name}
+                        <br />
+                        <span className="text-xs text-black/50">{formatDateTime(inv.signed_at)}</span>
+                      </>
+                    ) : (
+                      "-"
+                    )}
                   </td>
                 </tr>
               ))}

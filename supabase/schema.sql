@@ -909,3 +909,49 @@ end $$;
 -- Tax is uncommon for this business, so it's a manually-entered, optional
 -- figure per invoice rather than an automatic rate calculation.
 alter table invoices add column if not exists tax_amount numeric;
+
+-- Customer e-signature. signature_token is the unguessable bearer credential
+-- for the public /sign/[token] link — every invoice gets one at creation so
+-- "send for signature" just has to reveal it, not generate it. Signature
+-- status is deliberately separate from the existing payment `status` column
+-- (Draft/Sent/Paid/...): a customer can sign before or independent of paying.
+alter table invoices add column if not exists signature_token uuid not null default gen_random_uuid();
+alter table invoices add column if not exists signature_status text not null default 'Not Sent' check (
+  signature_status in ('Not Sent', 'Sent', 'Signed')
+);
+alter table invoices add column if not exists signature_sent_at timestamptz;
+alter table invoices add column if not exists signed_at timestamptz;
+alter table invoices add column if not exists signed_name text;
+alter table invoices add column if not exists signature_image text;
+-- Frozen snapshot of everything the customer actually saw and agreed to
+-- (Bill To, charges, vehicle/service info, authorization text) at the moment
+-- of signing — so a later edit to the job never silently changes what the
+-- signed document shows. Amount paid / refund / balance due stay live since
+-- payment tracking legitimately continues after signing.
+alter table invoices add column if not exists signed_snapshot jsonb;
+
+create unique index if not exists invoices_signature_token_idx on invoices(signature_token);
+
+-- Defense in depth alongside the app-level "already signed" guard in
+-- submitInvoiceSignature — once a signature is recorded, nothing (including
+-- a direct service-role write) may alter it, mirroring the job_notes
+-- content-immutability trigger established earlier.
+create or replace function invoices_prevent_signature_overwrite() returns trigger
+language plpgsql as $$
+begin
+  if old.signature_status = 'Signed' and (
+    new.signed_at is distinct from old.signed_at
+    or new.signed_name is distinct from old.signed_name
+    or new.signature_image is distinct from old.signature_image
+    or new.signed_snapshot is distinct from old.signed_snapshot
+  ) then
+    raise exception 'invoice signature is immutable once signed';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists invoices_prevent_signature_overwrite_trigger on invoices;
+create trigger invoices_prevent_signature_overwrite_trigger
+  before update on invoices
+  for each row execute function invoices_prevent_signature_overwrite();

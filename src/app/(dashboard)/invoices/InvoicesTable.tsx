@@ -22,6 +22,14 @@ export interface Invoice {
   paid_at: string | null;
   voided_at: string | null;
   refunded_at: string | null;
+  signature_token: string;
+  signature_status: "Not Sent" | "Sent" | "Signed";
+  signature_sent_at: string | null;
+  signed_at: string | null;
+  signed_name: string | null;
+  signature_image: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  signed_snapshot: any;
 }
 
 function formatCurrency(n: number | null) {
@@ -46,6 +54,20 @@ const STATUS_STYLES: Record<Invoice["status"], string> = {
 export function InvoiceStatusBadge({ status }: { status: Invoice["status"] }) {
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}>
+      {status}
+    </span>
+  );
+}
+
+const SIGNATURE_STATUS_STYLES: Record<Invoice["signature_status"], string> = {
+  "Not Sent": "bg-black/10 text-black/60",
+  Sent: "bg-blue-100 text-blue-700",
+  Signed: "bg-green-100 text-green-700",
+};
+
+export function SignatureStatusBadge({ status }: { status: Invoice["signature_status"] }) {
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${SIGNATURE_STATUS_STYLES[status]}`}>
       {status}
     </span>
   );
@@ -97,6 +119,7 @@ export default function InvoicesTable({
               <th className="whitespace-nowrap px-3 py-2 font-medium">Amount</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Paid</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Signature</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Created</th>
             </tr>
           </thead>
@@ -126,12 +149,15 @@ export default function InvoicesTable({
                 <td className="whitespace-nowrap px-3 py-2">
                   <InvoiceStatusBadge status={inv.status} />
                 </td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  <SignatureStatusBadge status={inv.signature_status} />
+                </td>
                 <td className="whitespace-nowrap px-3 py-2">{formatDateTime(inv.created_at)}</td>
               </tr>
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-black/50">
+                <td colSpan={8} className="px-3 py-6 text-center text-black/50">
                   No invoices match.
                 </td>
               </tr>
