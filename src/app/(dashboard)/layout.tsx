@@ -28,7 +28,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-black/10 px-6 py-3">
+      <header className="flex items-center justify-between border-b border-black/10 px-6 py-3 print:hidden">
         <Link href="/" className="text-sm font-semibold">
           EOD Report Dashboard
         </Link>
@@ -70,7 +70,7 @@ export default async function DashboardLayout({
           </form>
         </div>
       </header>
-      <main className="flex-1 px-6 py-6">{children}</main>
+      <main className="flex-1 px-6 py-6 print:p-0">{children}</main>
       {user && <ClockInPrompt hasOpenEntry={hasOpenEntry} />}
     </div>
   );

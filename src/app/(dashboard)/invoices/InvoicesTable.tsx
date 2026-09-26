@@ -13,6 +13,7 @@ export interface Invoice {
   state: string | null;
   service_details: string | null;
   amount: number | null;
+  tax_amount: number | null;
   amount_paid: number;
   status: "Draft" | "Sent" | "Paid" | "Partially Paid" | "Voided" | "Refunded";
   notes: string | null;

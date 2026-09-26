@@ -2,15 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { setInvoiceStatus, recordInvoicePayment, deleteInvoice } from "./invoice-actions";
+import { setInvoiceStatus, recordInvoicePayment, deleteInvoice, type InvoiceLineItemRow } from "./invoice-actions";
 import InvoiceForm from "./InvoiceForm";
 import type { Invoice } from "./InvoicesTable";
 
 export default function InvoiceStatusActions({
   invoice,
+  lineItems,
   canDelete,
 }: {
   invoice: Invoice;
+  lineItems: InvoiceLineItemRow[];
   canDelete: boolean;
 }) {
   const router = useRouter();
@@ -120,7 +122,7 @@ export default function InvoiceStatusActions({
         )}
       </div>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {editing && <InvoiceForm invoice={invoice} onClose={() => setEditing(false)} />}
+      {editing && <InvoiceForm invoice={invoice} lineItems={lineItems} onClose={() => setEditing(false)} />}
     </div>
   );
 }

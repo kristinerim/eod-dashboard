@@ -18,6 +18,8 @@ interface JobDefaults {
   state: string | null;
   job_amount: number | null;
   notes: string | null;
+  job_type: string | null;
+  job_name: string | null;
 }
 
 export default function JobInvoicesSection({

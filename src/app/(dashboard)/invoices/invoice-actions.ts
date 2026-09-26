@@ -7,6 +7,13 @@ import { INVOICE_STATUSES } from "@/lib/constants";
 
 type ActionResult = { success: true; id?: string } | { error: string };
 
+export interface InvoiceLineItemRow {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+}
+
 function numberOrNull(v: FormDataEntryValue | null): number | null {
   if (v === null || v === "") return null;
   const n = Number(v);
@@ -17,6 +24,59 @@ function strOrNull(v: FormDataEntryValue | null): string | null {
   if (v === null) return null;
   const s = String(v).trim();
   return s === "" ? null : s;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// Line items are a client-managed repeatable row group (add/remove charges),
+// so they're submitted as one JSON blob rather than parallel same-name
+// fields — the same pattern used for Contacted Vendors on the job form.
+function lineItemsFromForm(formData: FormData): InvoiceLineItemRow[] {
+  const raw = formData.get("line_items_json");
+  if (!raw) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+
+  const rows: InvoiceLineItemRow[] = [];
+  for (const item of parsed) {
+    if (typeof item !== "object" || item === null) continue;
+    const row = item as Record<string, unknown>;
+    const description = typeof row.description === "string" ? row.description.trim() : "";
+    if (!description) continue;
+    const quantity = typeof row.quantity === "number" && !Number.isNaN(row.quantity) ? row.quantity : 1;
+    const unit_price = typeof row.unit_price === "number" && !Number.isNaN(row.unit_price) ? row.unit_price : 0;
+    rows.push({ description, quantity, unit_price, amount: round2(quantity * unit_price) });
+  }
+  return rows;
+}
+
+async function syncInvoiceLineItems(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  invoiceId: string,
+  rows: InvoiceLineItemRow[]
+): Promise<string | null> {
+  const { error: deleteError } = await supabase
+    .from("invoice_line_items")
+    .delete()
+    .eq("invoice_id", invoiceId);
+  if (deleteError) return deleteError.message;
+
+  if (rows.length === 0) return null;
+
+  const { error: insertError } = await supabase.from("invoice_line_items").insert(
+    rows.map((r, i) => ({ ...r, invoice_id: invoiceId, sort_order: i }))
+  );
+  if (insertError) return insertError.message;
+
+  return null;
 }
 
 function revalidateInvoice(reportId: string | undefined, jobId: string, invoiceId?: string) {
@@ -60,8 +120,10 @@ export async function createInvoice(jobId: string, formData: FormData): Promise<
   const permissionError = await requireInvoicePermission(jobId);
   if (permissionError) return { error: permissionError };
 
-  const amount = numberOrNull(formData.get("amount")) ?? job.job_amount;
-  if (amount === null) return { error: "Enter the invoice amount." };
+  const lineItems = lineItemsFromForm(formData);
+  if (lineItems.length === 0) return { error: "Add at least one charge." };
+  const amount = round2(lineItems.reduce((sum, r) => sum + r.amount, 0));
+  const tax_amount = numberOrNull(formData.get("tax_amount"));
 
   const { data: inserted, error } = await supabase
     .from("invoices")
@@ -73,6 +135,7 @@ export async function createInvoice(jobId: string, formData: FormData): Promise<
       state: strOrNull(formData.get("state")) ?? job.state,
       service_details: strOrNull(formData.get("service_details")) ?? job.notes,
       amount,
+      tax_amount,
       notes: strOrNull(formData.get("notes")),
       status: "Draft",
       created_by: user.id,
@@ -81,6 +144,10 @@ export async function createInvoice(jobId: string, formData: FormData): Promise<
     .single();
 
   if (error) return { error: error.message };
+
+  const lineItemsError = await syncInvoiceLineItems(supabase, inserted.id, lineItems);
+  if (lineItemsError) return { error: lineItemsError };
+
   revalidateInvoice(job.report_id as string, jobId, inserted?.id);
   return { success: true, id: inserted?.id };
 }
@@ -108,8 +175,10 @@ export async function updateInvoice(invoiceId: string, formData: FormData): Prom
   const permissionError = await requireInvoicePermission(invoice.job_id);
   if (permissionError) return { error: permissionError };
 
-  const amount = numberOrNull(formData.get("amount"));
-  if (amount === null) return { error: "Enter the invoice amount." };
+  const lineItems = lineItemsFromForm(formData);
+  if (lineItems.length === 0) return { error: "Add at least one charge." };
+  const amount = round2(lineItems.reduce((sum, r) => sum + r.amount, 0));
+  const tax_amount = numberOrNull(formData.get("tax_amount"));
 
   const { error } = await supabase
     .from("invoices")
@@ -119,11 +188,16 @@ export async function updateInvoice(invoiceId: string, formData: FormData): Prom
       state: strOrNull(formData.get("state")),
       service_details: strOrNull(formData.get("service_details")),
       amount,
+      tax_amount,
       notes: strOrNull(formData.get("notes")),
     })
     .eq("id", invoiceId);
 
   if (error) return { error: error.message };
+
+  const lineItemsError = await syncInvoiceLineItems(supabase, invoiceId, lineItems);
+  if (lineItemsError) return { error: lineItemsError };
+
   revalidateInvoice(reportId, invoice.job_id, invoiceId);
   return { success: true };
 }

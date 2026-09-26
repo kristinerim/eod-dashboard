@@ -344,6 +344,8 @@ export default async function JobDetailPage({
           state: job.state,
           job_amount: job.job_amount,
           notes: job.notes,
+          job_type: job.job_type,
+          job_name: job.job_name,
         }}
         invoices={(invoices ?? []) as Invoice[]}
       />

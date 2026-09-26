@@ -833,3 +833,79 @@ alter table jobs add column if not exists trailer_height text;
 -- in job-fields.ts), applied everywhere GOA is recorded.
 alter table jobs add column if not exists goa_amount numeric;
 alter table job_contacted_vendors add column if not exists goa_amount numeric;
+
+-- Customer invoice redesign — itemized charges (Description/Qty/Price/Amount,
+-- matching the Workiz sample) replace the old single "amount" figure as the
+-- source of the subtotal. invoices.amount is kept in sync as the sum of these
+-- rows so existing list/dashboard displays that read it directly still work.
+create table if not exists invoice_line_items (
+  id uuid primary key default gen_random_uuid(),
+  invoice_id uuid not null references invoices(id) on delete cascade,
+  description text not null,
+  quantity numeric not null default 1,
+  unit_price numeric not null default 0,
+  amount numeric not null default 0,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists invoice_line_items_invoice_id_idx on invoice_line_items(invoice_id);
+
+alter table invoice_line_items enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where tablename = 'invoice_line_items' and policyname = 'authenticated can read invoice line items'
+  ) then
+    create policy "authenticated can read invoice line items" on invoice_line_items
+      for select to authenticated using (true);
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'invoice_line_items' and policyname = 'authenticated can insert invoice line items'
+  ) then
+    create policy "authenticated can insert invoice line items" on invoice_line_items
+      for insert to authenticated with check (
+        is_supervisor() or exists (
+          select 1 from invoices join jobs on jobs.id = invoices.job_id
+          where invoices.id = invoice_line_items.invoice_id and jobs.agent = current_agent_name()
+        )
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'invoice_line_items' and policyname = 'authenticated can update invoice line items'
+  ) then
+    create policy "authenticated can update invoice line items" on invoice_line_items
+      for update to authenticated
+      using (
+        is_supervisor() or exists (
+          select 1 from invoices join jobs on jobs.id = invoices.job_id
+          where invoices.id = invoice_line_items.invoice_id and jobs.agent = current_agent_name()
+        )
+      )
+      with check (
+        is_supervisor() or exists (
+          select 1 from invoices join jobs on jobs.id = invoices.job_id
+          where invoices.id = invoice_line_items.invoice_id and jobs.agent = current_agent_name()
+        )
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies where tablename = 'invoice_line_items' and policyname = 'authenticated can delete invoice line items'
+  ) then
+    create policy "authenticated can delete invoice line items" on invoice_line_items
+      for delete to authenticated using (
+        is_supervisor() or exists (
+          select 1 from invoices join jobs on jobs.id = invoices.job_id
+          where invoices.id = invoice_line_items.invoice_id and jobs.agent = current_agent_name()
+        )
+      );
+  end if;
+end $$;
+
+-- Tax is uncommon for this business, so it's a manually-entered, optional
+-- figure per invoice rather than an automatic rate calculation.
+alter table invoices add column if not exists tax_amount numeric;

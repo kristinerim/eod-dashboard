@@ -1,3 +1,7 @@
+// Shown on the customer-facing invoice header.
+export const COMPANY_NAME = "Quick Towing USA LLC";
+export const COMPANY_PHONE = "(833) 836-0287";
+
 export const TEAM_MEMBERS = [
   "Aaron Abarquez",
   "Abrille Arado",
