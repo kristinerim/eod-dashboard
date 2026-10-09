@@ -30,7 +30,12 @@ export function useFormSnapshot(initial: Record<string, string>) {
     sync();
   }, [sync]);
 
-  return { formRef, snapshot, sync, formHandlers: { onInput: sync, onChange: sync } };
+  // Only onChange — never onInput. A dropdown fires the native "input" event
+  // before "change"; re-rendering in between made React reset any controlled
+  // <select> (Job status, Vendor paid via) to its old value before it could
+  // record the choice. React's onChange already fires for typing in text
+  // fields, so nothing is lost.
+  return { formRef, snapshot, sync, formHandlers: { onChange: sync } };
 }
 
 // Programmatically fills an uncontrolled field and lets the snapshot hear
