@@ -1,21 +1,42 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   TEAM_MEMBERS,
-  US_STATE_CODES,
   PLATFORMS,
+  PAYMENT_AUTH_STATUSES,
+  PENDING_COMPLETION_STATUS,
   PENDING_COMPLETION_SUBSTATUSES,
-  JOB_TYPES,
+  JOB_STATUS_SUGGESTIONS,
 } from "@/lib/constants";
+import {
+  INTAKE_STEPS,
+  buildIntakeSummary,
+  intakeInitialFromRecord,
+  jobTypeNeedsDropOff,
+  stepFieldKeys,
+  type IntakeStepId,
+} from "@/lib/intake";
 import { createJob, updateJob } from "./job-actions";
 import type { ContactedVendorRow } from "./job-fields";
 import type { Job } from "./JobsTable";
-import JobTypeFields from "./JobTypeFields";
-
-const PENDING_COMPLETION_STATUS = "Service Rendered – Pending Completion";
+import IntakeShell, { StepPanel } from "../../intake/IntakeShell";
+import { useFormSnapshot } from "../../intake/useFormSnapshot";
+import {
+  Field,
+  SelectField,
+  TextAreaField,
+  TextField,
+  ServiceStep,
+  LocationStep,
+  VehicleStep,
+  DetailsStep,
+  DropOffStep,
+  CustomerStep,
+  QuoteStep,
+} from "../../intake/IntakePanels";
 
 // datetime-local inputs work in wall-clock time with no timezone; the team
 // works in Philippine Time, so shift stored UTC instants into a PHT reading
@@ -26,18 +47,8 @@ function isoToDatetimeLocalPHT(iso: string | null | undefined): string {
   return shifted.toISOString().slice(0, 16);
 }
 
-const JOB_STATUS_SUGGESTIONS = [
-  "Appointment",
-  "Converted",
-  "Dispatched",
-  "In Progress",
-  "On Hold",
-  "Needs Attention",
-  PENDING_COMPLETION_STATUS,
-  "Completed",
-  "Cancelled",
-];
-
+// A lead being picked to pre-fill a new job — the whole row, since the lead
+// now carries the full intake (service, location, vehicle, quote...).
 export interface OpenLead {
   id: string;
   lead_number: string;
@@ -45,6 +56,7 @@ export interface OpenLead {
   customer_phone: string | null;
   state: string | null;
   notes: string | null;
+  [key: string]: unknown;
 }
 
 type VendorRow = ContactedVendorRow & { id: string };
@@ -71,6 +83,14 @@ interface Props {
   contactedVendors?: VendorRow[];
 }
 
+// In a job the last step is the full dispatch/operations area, not just a
+// conversion handoff.
+const JOB_STEPS = INTAKE_STEPS.map((s) =>
+  s.id === "convert"
+    ? { ...s, title: "Dispatch & Operations", prompt: "Assign, schedule, and dispatch the job." }
+    : s
+);
+
 export default function JobForm({
   reportId,
   job,
@@ -87,11 +107,10 @@ export default function JobForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [jobAmount, setJobAmount] = useState(job?.job_amount?.toString() ?? "");
+  const [active, setActive] = useState<IntakeStepId>("service");
   const [vendorsFee, setVendorsFee] = useState(job?.vendors_fee?.toString() ?? "");
   const [refundedToClient, setRefundedToClient] = useState(job?.refunded_to_client?.toString() ?? "");
   const [jobStatus, setJobStatus] = useState(job?.job_status ?? "");
-  const [jobType, setJobType] = useState(job?.job_type ?? "");
   const [vendorPaidVia, setVendorPaidVia] = useState(job?.vendor_paid_via ?? "");
   const [timeDispatched, setTimeDispatched] = useState(isoToDatetimeLocalPHT(job?.time_dispatched));
   const [etaMinutes, setEtaMinutes] = useState(job?.eta_minutes?.toString() ?? "");
@@ -104,6 +123,28 @@ export default function JobForm({
   const needsTimeDispatched = isDispatchedSelected && !timeDispatched;
 
   const selectedLead = openLeads?.find((l) => l.id === selectedLeadId) ?? null;
+
+  // Every intake field's starting value, whether from the job being edited, a
+  // lead picked to pre-fill a new job, or nothing.
+  const initial = useMemo(() => {
+    const base = intakeInitialFromRecord(selectedLead ?? job);
+    if (!base.service_country) base.service_country = "US";
+    if (selectedLead && !job) {
+      const total = (Number(selectedLead.quoted_price) || 0) + (Number(selectedLead.additional_charges) || 0);
+      if (total) base.job_amount = String(total);
+    }
+    return base;
+  }, [selectedLead, job]);
+
+  const { formRef, snapshot, sync, formHandlers } = useFormSnapshot(initial);
+  useEffect(() => {
+    sync();
+  }, [selectedLeadId, sync]);
+
+  const jobType = snapshot.job_type ?? initial.job_type ?? "";
+  const steps = JOB_STEPS.filter((s) => s.id !== "dropoff" || jobTypeNeedsDropOff(jobType));
+  const cardKeys = stepFieldKeys("card", jobType);
+  const summary = buildIntakeSummary({ ...snapshot, job_status: jobStatus }, "job");
 
   // Dispatching an appointment or converted job means the ETA now measures
   // something different (time to arrival, not time to the appointment/
@@ -122,7 +163,7 @@ export default function JobForm({
   const profitPreview =
     vendorsFee.trim() === "" || isAppointmentSelected
       ? null
-      : (Number(jobAmount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
+      : (Number(snapshot.job_amount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
 
   function addVendorRow() {
     setVendorRows((rows) => [...rows, newVendorRow()]);
@@ -136,32 +177,43 @@ export default function JobForm({
     setVendorRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  function jump(step: IntakeStepId, message: string) {
+    setActive(step);
+    setError(message);
+  }
+
+  function handleSubmit() {
     setError(null);
+    const form = formRef.current;
+    if (!form) return;
+    const formData = new FormData(form);
+    const text = (name: string) => String(formData.get(name) ?? "").trim();
 
-    if (needsEtaUpdateOnDispatch) {
-      setError("Update the ETA before dispatching this job.");
-      return;
+    // Every step stays mounted (just hidden), so the browser can't be asked to
+    // validate them — check the required ones here and jump to the step that
+    // needs attention. The server re-checks all of this.
+    if (!text("agent")) return jump("convert", "Select the team member for this job.");
+    if (isNewJob && !text("customer_name")) return jump("customer", "Enter the customer name.");
+    if (!text("job_number")) return jump("convert", "Enter the job number.");
+    if (!text("job_amount")) return jump("quote", "Enter the job amount.");
+    if (isNewJob && !text("time_converted")) return jump("convert", "Enter the time converted.");
+    if (isPendingCompletion && !text("pending_completion_substatus")) {
+      return jump("convert", "Select a sub-status for Service Rendered – Pending Completion.");
     }
-
-    if (goa && goaAmount.trim() === "") {
-      setError("Enter the GOA amount.");
-      return;
-    }
+    if (needsTimeDispatched) return jump("convert", "Enter the time dispatched.");
+    if (needsEtaUpdateOnDispatch) return jump("convert", "Update the ETA before dispatching this job.");
+    if (goa && goaAmount.trim() === "") return jump("convert", "Enter the GOA amount.");
 
     const vendorMissingGoaAmount = vendorRows.find((r) => r.goa && r.goa_amount === null);
     if (vendorMissingGoaAmount) {
-      setError(`Enter the GOA amount for ${vendorMissingGoaAmount.vendor_name || "the contacted vendor"}.`);
-      return;
+      return jump(
+        "convert",
+        `Enter the GOA amount for ${vendorMissingGoaAmount.vendor_name || "the contacted vendor"}.`
+      );
     }
 
-    const formData = new FormData(e.currentTarget);
-
     startTransition(async () => {
-      const result = job
-        ? await updateJob(job.id, formData)
-        : await createJob(reportId, formData);
+      const result = job ? await updateJob(job.id, formData) : await createJob(reportId, formData);
 
       if ("error" in result) {
         setError(result.error);
@@ -172,24 +224,37 @@ export default function JobForm({
     });
   }
 
+  const stepDef = (id: IntakeStepId) => steps.find((s) => s.id === id) ?? JOB_STEPS.find((s) => s.id === id)!;
+
+  const completed: Partial<Record<IntakeStepId, boolean>> = {
+    service: !!snapshot.job_type,
+    location: !!(snapshot.service_street_address || snapshot.service_city),
+    vehicle: !!(snapshot.vehicle_make || snapshot.vehicle_model || snapshot.vehicle_year),
+    details: !!snapshot.issue,
+    dropoff: !!(snapshot.dropoff_street_address || snapshot.dropoff_city),
+    customer: !!(snapshot.customer_name && snapshot.customer_phone),
+    quote: !!snapshot.job_amount,
+    convert: !!snapshot.job_number,
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white p-6 shadow-lg">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-lg bg-white p-5 shadow-lg">
+        <div className="mb-3 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{job ? "Edit job" : "Add job"}</h2>
           <button onClick={onClose} className="text-black/50 hover:text-black" type="button">
             ✕
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form ref={formRef} {...formHandlers} onSubmit={(e) => e.preventDefault()} noValidate className="space-y-3">
           <input type="hidden" name="contacted_vendors_json" value={JSON.stringify(vendorRows)} />
           {isNewJob && selectedLeadId && <input type="hidden" name="selected_lead_id" value={selectedLeadId} />}
 
-          {/* 1. Client Details */}
-          <Section title="Client Details">
-            {isNewJob && openLeads && openLeads.length > 0 && (
-              <Field label="Auto-populate from an existing lead">
+          {isNewJob && openLeads && openLeads.length > 0 && (
+            <div className="rounded-lg bg-black/[0.03] p-2.5 sm:max-w-md">
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-black/60">Auto-populate from an existing lead</span>
                 <select
                   value={selectedLeadId}
                   onChange={(e) => setSelectedLeadId(e.target.value)}
@@ -202,278 +267,173 @@ export default function JobForm({
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-xs text-black/50">
-                  Fills in whatever the lead has below — everything stays editable.
-                </p>
-              </Field>
-            )}
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={isNewJob ? "Client name (required)" : "Client name"}>
-                <input
-                  key={`customer_name-${selectedLeadId}`}
-                  name="customer_name"
-                  required={isNewJob}
-                  defaultValue={selectedLead?.customer_name ?? job?.customer_name ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label="Company name">
-                <input
-                  name="client_company_name"
-                  defaultValue={job?.client_company_name ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
+              </label>
+              <p className="mt-1 text-xs text-black/50">
+                Fills in everything the lead collected — service, location, vehicle, customer, and quote. All of it
+                stays editable.
+              </p>
             </div>
+          )}
 
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Phone number">
-                <input
-                  key={`customer_phone-${selectedLeadId}`}
-                  name="customer_phone"
-                  defaultValue={selectedLead?.customer_phone ?? job?.customer_phone ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label="Phone extension">
-                <input
-                  name="phone_extension"
-                  defaultValue={job?.phone_extension ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label="Email address">
-                <input
-                  name="client_email"
-                  type="email"
-                  defaultValue={job?.client_email ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-            </div>
-          </Section>
-
-          {/* 2. Service Location */}
-          <Section title="Service Location">
-            <Field label="Street address">
-              <input
-                name="service_street_address"
-                defaultValue={job?.service_street_address ?? ""}
-                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-              />
-            </Field>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Unit / suite / apartment">
-                <input
-                  name="service_unit"
-                  defaultValue={job?.service_unit ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label="City">
-                <input
-                  name="service_city"
-                  defaultValue={job?.service_city ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="State">
-                <select
-                  key={`state-${selectedLeadId}`}
-                  name="state"
-                  defaultValue={selectedLead?.state ?? job?.state ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+          <IntakeShell
+            steps={steps}
+            active={active}
+            onSelect={setActive}
+            summary={summary}
+            completed={completed}
+            footer={
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded border border-black/20 px-4 py-1.5 text-sm"
                 >
-                  <option value="">-</option>
-                  {US_STATE_CODES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="ZIP code">
-                <input
-                  name="service_zip"
-                  defaultValue={job?.service_zip ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label="Country">
-                <input
-                  name="service_country"
-                  defaultValue={job?.service_country ?? "US"}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Latitude">
-                <input
-                  name="service_latitude"
-                  type="number"
-                  step="any"
-                  defaultValue={job?.service_latitude ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label="Longitude">
-                <input
-                  name="service_longitude"
-                  type="number"
-                  step="any"
-                  defaultValue={job?.service_longitude ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-            </div>
-
-            <button
-              type="button"
-              disabled
-              title="Map picker coming later — enter latitude/longitude manually for now"
-              className="w-full cursor-not-allowed rounded border border-dashed border-black/20 px-2 py-2 text-xs text-black/40"
-            >
-              Pin on map (coming soon)
-            </button>
-          </Section>
-
-          {/* 3. Job Details */}
-          <Section title="Job Details">
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Job # (required)">
-                <input
-                  name="job_number"
-                  required
-                  defaultValue={job?.job_number ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label="Vendor name">
-                <input
-                  name="vendor_name"
-                  defaultValue={job?.vendor_name ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Job name">
-                <input
-                  name="job_name"
-                  defaultValue={job?.job_name ?? ""}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label="Job type">
-                <select
-                  name="job_type"
-                  value={jobType}
-                  onChange={(e) => setJobType(e.target.value)}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={isPending}
+                  className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                 >
-                  <option value="">-</option>
-                  {JOB_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-
-            <JobTypeFields jobType={jobType} job={job} />
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Job status">
-                <select
-                  name="job_status"
-                  value={jobStatus}
-                  onChange={(e) => setJobStatus(e.target.value)}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                >
-                  <option value="">-</option>
-                  {JOB_STATUS_SUGGESTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                  {job?.job_status && !JOB_STATUS_SUGGESTIONS.includes(job.job_status) && (
-                    <option value={job.job_status}>{job.job_status}</option>
-                  )}
-                </select>
-              </Field>
-              {isPendingCompletion && (
-                <Field label="Sub-status">
-                  <select
-                    name="pending_completion_substatus"
-                    defaultValue={job?.pending_completion_substatus ?? ""}
-                    required
-                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                  >
-                    <option value="" disabled>
-                      Select a sub-status
-                    </option>
-                    {PENDING_COMPLETION_SUBSTATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                  {isPending ? "Saving..." : "Save"}
+                </button>
+              </>
+            }
+          >
+            <Fragment key={selectedLeadId}>
+              <StepPanel step={stepDef("service")} active={active}>
+                <ServiceStep values={initial} />
+              </StepPanel>
+              <StepPanel step={stepDef("location")} active={active}>
+                <LocationStep values={initial} />
+              </StepPanel>
+              <StepPanel step={stepDef("vehicle")} active={active}>
+                <VehicleStep values={initial} jobType={jobType} />
+              </StepPanel>
+              <StepPanel step={stepDef("details")} active={active}>
+                <DetailsStep values={initial} jobType={jobType} />
+              </StepPanel>
+              {jobTypeNeedsDropOff(jobType) && (
+                <StepPanel step={stepDef("dropoff")} active={active}>
+                  <DropOffStep values={initial} jobType={jobType} />
+                </StepPanel>
               )}
-            </div>
+              <StepPanel step={stepDef("customer")} active={active}>
+                <CustomerStep values={initial} formRef={formRef} excludeLeadId={undefined} />
+              </StepPanel>
+              <StepPanel step={stepDef("quote")} active={active}>
+                <QuoteStep values={initial} snapshot={snapshot} mode="job" />
+              </StepPanel>
+            </Fragment>
 
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Appointment date & time">
-                <input
-                  name="appointment_at"
-                  type="datetime-local"
-                  defaultValue={isoToDatetimeLocalPHT(job?.appointment_at)}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label={isNewJob ? "Time converted (required)" : "Time converted"}>
-                <input
-                  name="time_converted"
-                  type="datetime-local"
-                  required={isNewJob}
-                  defaultValue={isoToDatetimeLocalPHT(job?.time_converted)}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-              <Field label={needsTimeDispatched ? "Time dispatched (required)" : "Time dispatched (optional)"}>
-                <input
-                  name="time_dispatched"
-                  type="datetime-local"
-                  required={needsTimeDispatched}
-                  value={timeDispatched}
-                  onChange={(e) => setTimeDispatched(e.target.value)}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
-            </div>
-            {needsTimeDispatched ? (
-              <p className="text-xs font-medium text-amber-600">
-                Status is set to &quot;Dispatched&quot; — enter the time this happened to start the
-                ETA countdown.
-              </p>
-            ) : (
-              <p className="text-xs text-black/50">
-                The ETA countdown always starts from the time dispatched, whether it was entered now
-                or when the job was created.
-              </p>
-            )}
-          </Section>
+            <StepPanel step={stepDef("convert")} active={active}>
+              <Section title="Job Details">
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Job # (required)">
+                    <input
+                      name="job_number"
+                      defaultValue={job?.job_number ?? ""}
+                      className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                    />
+                  </Field>
+                  <Field label="Vendor name">
+                    <input
+                      name="vendor_name"
+                      defaultValue={job?.vendor_name ?? ""}
+                      className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                    />
+                  </Field>
+                  <TextField name="preferred_vendor" label="Preferred vendor" values={initial} />
+                </div>
 
-          {/* 4. Schedule */}
+                <Field label="Job name">
+                  <input
+                    name="job_name"
+                    defaultValue={job?.job_name ?? ""}
+                    className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                  />
+                </Field>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Job status">
+                    <select
+                      name="job_status"
+                      value={jobStatus}
+                      onChange={(e) => setJobStatus(e.target.value)}
+                      className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                    >
+                      <option value="">-</option>
+                      {JOB_STATUS_SUGGESTIONS.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                      {job?.job_status && !JOB_STATUS_SUGGESTIONS.includes(job.job_status) && (
+                        <option value={job.job_status}>{job.job_status}</option>
+                      )}
+                    </select>
+                  </Field>
+                  {isPendingCompletion && (
+                    <Field label="Sub-status">
+                      <select
+                        name="pending_completion_substatus"
+                        defaultValue={job?.pending_completion_substatus ?? ""}
+                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                      >
+                        <option value="" disabled>
+                          Select a sub-status
+                        </option>
+                        {PENDING_COMPLETION_SUBSTATUSES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Appointment date & time">
+                    <input
+                      name="appointment_at"
+                      type="datetime-local"
+                      defaultValue={isoToDatetimeLocalPHT(job?.appointment_at)}
+                      className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                    />
+                  </Field>
+                  <Field label={isNewJob ? "Time converted (required)" : "Time converted"}>
+                    <input
+                      name="time_converted"
+                      type="datetime-local"
+                      defaultValue={isoToDatetimeLocalPHT(job?.time_converted)}
+                      className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                    />
+                  </Field>
+                  <Field label={needsTimeDispatched ? "Time dispatched (required)" : "Time dispatched (optional)"}>
+                    <input
+                      name="time_dispatched"
+                      type="datetime-local"
+                      value={timeDispatched}
+                      onChange={(e) => setTimeDispatched(e.target.value)}
+                      className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                    />
+                  </Field>
+                </div>
+                {needsTimeDispatched ? (
+                  <p className="text-xs font-medium text-amber-600">
+                    Status is set to &quot;Dispatched&quot; — enter the time this happened to start the ETA
+                    countdown.
+                  </p>
+                ) : (
+                  <p className="text-xs text-black/50">
+                    The ETA countdown always starts from the time dispatched, whether it was entered now or when
+                    the job was created.
+                  </p>
+                )}
+              </Section>
+
           <Section title="Schedule">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Start date & time">
@@ -512,7 +472,6 @@ export default function JobForm({
                   <select
                     name="agent"
                     defaultValue={job?.agent ?? ""}
-                    required
                     className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                   >
                     <option value="" disabled>
@@ -547,7 +506,7 @@ export default function JobForm({
             </Link>
           </Section>
 
-          {/* 5. Service Provider Quote */}
+
           <Section title="Service Provider Quote">
             <div className="grid grid-cols-2 gap-3">
               <Field label="Service amount">
@@ -565,7 +524,6 @@ export default function JobForm({
                   type="number"
                   min="0"
                   step="1"
-                  required={needsEtaUpdateOnDispatch}
                   value={etaMinutes}
                   onChange={(e) => setEtaMinutes(e.target.value)}
                   className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
@@ -593,7 +551,6 @@ export default function JobForm({
                   name="goa_amount"
                   type="number"
                   step="0.01"
-                  required
                   value={goaAmount}
                   onChange={(e) => setGoaAmount(e.target.value)}
                   className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
@@ -602,7 +559,7 @@ export default function JobForm({
             )}
           </Section>
 
-          {/* 6. Contacted Vendors */}
+
           <Section title="Contacted Vendors">
             <p className="text-xs text-black/50">
               Basic structure for now — this will connect to the Vendor Map later.
@@ -660,7 +617,6 @@ export default function JobForm({
                         <input
                           type="number"
                           step="0.01"
-                          required
                           value={row.goa_amount ?? ""}
                           onChange={(e) =>
                             updateVendorRow(row.id, {
@@ -684,20 +640,9 @@ export default function JobForm({
             </button>
           </Section>
 
-          {/* 7. Additional Quotes / Payment Information */}
-          <Section title="Additional Quotes / Payment Information">
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Job amount (required)">
-                <input
-                  name="job_amount"
-                  type="number"
-                  step="0.01"
-                  required
-                  value={jobAmount}
-                  onChange={(e) => setJobAmount(e.target.value)}
-                  className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                />
-              </Field>
+
+          <Section title="Payment & Vendor Costs">
+            <div className="grid grid-cols-2 gap-3">
               <Field label="Vendor fee">
                 <input
                   name="vendors_fee"
@@ -761,6 +706,21 @@ export default function JobForm({
                 </select>
               </Field>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <SelectField
+                name="payment_authorization_status"
+                label="Payment authorization status"
+                values={initial}
+                options={PAYMENT_AUTH_STATUSES}
+              />
+              {cardKeys.includes("customer_card_last4") && (
+                <TextField name="customer_card_last4" label="Last 4 digits of customer card" values={initial} maxLength={4} />
+              )}
+            </div>
+            {cardKeys.includes("customer_billing_address") && (
+              <TextField name="customer_billing_address" label="Billing address of customer" values={initial} />
+            )}
 
             {vendorPaidVia && (
               <Field label="Vendor card (last 4 digits)">
@@ -832,17 +792,10 @@ export default function JobForm({
             </div>
           </Section>
 
-          {/* Existing admin/notes fields — not part of the 7 new sections, kept as-is */}
+
           <Section title="Notes & Admin">
-            <Field label="Notes">
-              <textarea
-                key={`notes-${selectedLeadId}`}
-                name="notes"
-                defaultValue={selectedLead?.notes ?? job?.notes ?? ""}
-                rows={2}
-                className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-              />
-            </Field>
+            <TextAreaField name="notes" label="Notes" values={initial} rows={2} />
+            <TextAreaField name="dispatch_notes" label="Dispatch notes" values={initial} rows={2} />
 
             {job && (
               <>
@@ -882,24 +835,10 @@ export default function JobForm({
             )}
           </Section>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+            </StepPanel>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded border border-black/20 px-4 py-1.5 text-sm"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="rounded bg-black px-4 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {isPending ? "Saving..." : "Save"}
-            </button>
-          </div>
+            {error && <p className="text-sm font-medium text-red-600">{error}</p>}
+          </IntakeShell>
         </form>
       </div>
     </div>
@@ -912,14 +851,5 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h3 className="text-sm font-semibold text-black/80">{title}</h3>
       {children}
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block space-y-1">
-      <span className="text-xs font-medium text-black/60">{label}</span>
-      {children}
-    </label>
   );
 }

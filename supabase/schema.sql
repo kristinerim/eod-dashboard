@@ -955,3 +955,86 @@ drop trigger if exists invoices_prevent_signature_overwrite_trigger on invoices;
 create trigger invoices_prevent_signature_overwrite_trigger
   before update on invoices
   for each row execute function invoices_prevent_signature_overwrite();
+
+-- Guided Create Lead / Create Job workflow. Leads now carry the same intake
+-- columns as jobs (service type, locations, vehicle, issue, drop-off, quote)
+-- under the SAME names, so converting a lead to a job copies them across
+-- without re-entry. Year/Make/Model and the drop-off address are also stored
+-- as composed strings (year_make_model, drop_off_location) — what invoices
+-- and the job detail page already read.
+alter table leads add column if not exists job_type text;
+alter table leads add column if not exists service_street_address text;
+alter table leads add column if not exists service_unit text;
+alter table leads add column if not exists service_city text;
+alter table leads add column if not exists service_zip text;
+alter table leads add column if not exists service_country text;
+alter table leads add column if not exists service_latitude numeric;
+alter table leads add column if not exists service_longitude numeric;
+alter table leads add column if not exists service_location_notes text;
+alter table leads add column if not exists vehicle_year text;
+alter table leads add column if not exists vehicle_make text;
+alter table leads add column if not exists vehicle_model text;
+alter table leads add column if not exists year_make_model text;
+alter table leads add column if not exists vehicle_type text;
+alter table leads add column if not exists color text;
+alter table leads add column if not exists vin_or_lpn text;
+alter table leads add column if not exists issue text;
+alter table leads add column if not exists additional_service_details text;
+alter table leads add column if not exists can_roll text;
+alter table leads add column if not exists can_steer text;
+alter table leads add column if not exists can_go_to_neutral text;
+alter table leads add column if not exists tire_condition text;
+alter table leads add column if not exists drivetrain text;
+alter table leads add column if not exists with_good_spare_tire text;
+alter table leads add column if not exists locking_lug_nut text;
+alter table leads add column if not exists number_of_gallons numeric;
+alter table leads add column if not exists fuel_type text;
+alter table leads add column if not exists tire_size text;
+alter table leads add column if not exists trailer_type text;
+alter table leads add column if not exists loaded_with text;
+alter table leads add column if not exists trailer_weight text;
+alter table leads add column if not exists trailer_length text;
+alter table leads add column if not exists trailer_width text;
+alter table leads add column if not exists trailer_height text;
+alter table leads add column if not exists drop_off_location text;
+alter table leads add column if not exists dropoff_street_address text;
+alter table leads add column if not exists dropoff_unit text;
+alter table leads add column if not exists dropoff_city text;
+alter table leads add column if not exists dropoff_state text;
+alter table leads add column if not exists dropoff_zip text;
+alter table leads add column if not exists dropoff_country text;
+alter table leads add column if not exists dropoff_instructions text;
+alter table leads add column if not exists second_drop_off_location text;
+alter table leads add column if not exists distance_miles numeric;
+alter table leads add column if not exists client_company_name text;
+alter table leads add column if not exists phone_extension text;
+alter table leads add column if not exists caller_id text;
+alter table leads add column if not exists quoted_price numeric;
+alter table leads add column if not exists additional_charges numeric;
+alter table leads add column if not exists quote_notes text;
+alter table leads add column if not exists quote_status text not null default 'quoting' check (
+  quote_status in ('quoting', 'quoted', 'accepted', 'declined', 'follow_up')
+);
+
+-- Jobs only needed the columns that didn't already exist there.
+alter table jobs add column if not exists vehicle_year text;
+alter table jobs add column if not exists vehicle_make text;
+alter table jobs add column if not exists vehicle_model text;
+alter table jobs add column if not exists vehicle_type text;
+alter table jobs add column if not exists can_roll text;
+alter table jobs add column if not exists can_steer text;
+alter table jobs add column if not exists additional_service_details text;
+alter table jobs add column if not exists service_location_notes text;
+alter table jobs add column if not exists dropoff_street_address text;
+alter table jobs add column if not exists dropoff_unit text;
+alter table jobs add column if not exists dropoff_city text;
+alter table jobs add column if not exists dropoff_state text;
+alter table jobs add column if not exists dropoff_zip text;
+alter table jobs add column if not exists dropoff_country text;
+alter table jobs add column if not exists dropoff_instructions text;
+alter table jobs add column if not exists caller_id text;
+alter table jobs add column if not exists additional_charges numeric;
+alter table jobs add column if not exists quote_notes text;
+alter table jobs add column if not exists payment_authorization_status text;
+alter table jobs add column if not exists dispatch_notes text;
+alter table jobs add column if not exists preferred_vendor text;

@@ -89,6 +89,27 @@ export interface Job {
   trailer_length: string | null;
   trailer_width: string | null;
   trailer_height: string | null;
+  vehicle_year: string | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_type: string | null;
+  can_roll: string | null;
+  can_steer: string | null;
+  additional_service_details: string | null;
+  service_location_notes: string | null;
+  dropoff_street_address: string | null;
+  dropoff_unit: string | null;
+  dropoff_city: string | null;
+  dropoff_state: string | null;
+  dropoff_zip: string | null;
+  dropoff_country: string | null;
+  dropoff_instructions: string | null;
+  caller_id: string | null;
+  additional_charges: number | null;
+  quote_notes: string | null;
+  payment_authorization_status: string | null;
+  dispatch_notes: string | null;
+  preferred_vendor: string | null;
 }
 
 type Column = {

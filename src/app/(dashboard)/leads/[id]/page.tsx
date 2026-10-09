@@ -4,6 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, getAgentNameOptions, isSupervisor } from "@/lib/profile";
 import type { Lead } from "../LeadsTable";
 import LeadDetailActions from "../LeadDetailActions";
+import { QUOTE_STATUS_LABELS, type QuoteStatus } from "@/lib/constants";
+import { JOB_DETAIL_FIELD_DEFS } from "@/lib/jobTypeFields";
+import { composeDropOffLocation, jobTypeNeedsDropOff, stepFieldKeys } from "@/lib/intake";
 
 function formatDateTime(d: string | null) {
   if (!d) return "-";
@@ -46,7 +49,14 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
     { label: "Agent", value: lead.agent ?? "-" },
     { label: "Dispatcher", value: lead.dispatcher ?? "-" },
     { label: "Customer name", value: lead.customer_name ?? "-" },
-    { label: "Customer phone", value: lead.customer_phone ?? "-" },
+    { label: "Company", value: lead.client_company_name ?? "-" },
+    {
+      label: "Customer phone",
+      value: lead.customer_phone
+        ? `${lead.customer_phone}${lead.phone_extension ? ` ext. ${lead.phone_extension}` : ""}`
+        : "-",
+    },
+    ...(lead.caller_id ? [{ label: "Caller ID", value: lead.caller_id }] : []),
     { label: "Email", value: lead.email ?? "-" },
     { label: "State", value: lead.state ?? "-" },
     { label: "Source", value: lead.source ?? "-" },
@@ -65,6 +75,72 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   if (lead.status === "converted") {
     fields.push({ label: "Converted at", value: formatDateTime(lead.converted_at) });
   }
+
+  const money = (n: number | null) =>
+    n === null || n === undefined ? null : n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  const cityLine = [lead.service_street_address, lead.service_unit].filter(Boolean).join(", ");
+  const cityStateZip = [lead.service_city, [lead.state, lead.service_zip].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(", ");
+  const quoteTotal =
+    lead.quoted_price != null || lead.additional_charges != null
+      ? (lead.quoted_price ?? 0) + (lead.additional_charges ?? 0)
+      : null;
+  const jobType: string = lead.job_type ?? "";
+
+  // Only rows that actually have a value are shown — the same job-type-driven
+  // field config that decides what the form asked.
+  const typed = (step: "vehicle" | "details") =>
+    stepFieldKeys(step, jobType)
+      .filter((k) => k !== "year_make_model")
+      .map((k) => {
+        const raw = (lead as Record<string, unknown>)[k];
+        return { label: JOB_DETAIL_FIELD_DEFS[k].label, value: raw === null || raw === undefined ? null : String(raw) };
+      });
+
+  const intakeSections: { title: string; rows: { label: string; value: string | null }[] }[] = [
+    {
+      title: "Service",
+      rows: [
+        { label: "Service requested", value: lead.job_type },
+        { label: "Quote status", value: QUOTE_STATUS_LABELS[lead.quote_status as QuoteStatus] ?? null },
+      ],
+    },
+    {
+      title: "Service location",
+      rows: [
+        { label: "Address", value: [cityLine, cityStateZip].filter(Boolean).join(", ") || null },
+        { label: "Additional location details", value: lead.service_location_notes },
+      ],
+    },
+    {
+      title: "Vehicle",
+      rows: [{ label: "Year / Make / Model", value: lead.year_make_model }, ...typed("vehicle")],
+    },
+    { title: "Service details", rows: typed("details") },
+    ...(jobTypeNeedsDropOff(jobType)
+      ? [
+          {
+            title: "Drop-off",
+            rows: [
+              { label: "Drop-off address", value: composeDropOffLocation(lead) },
+              { label: "Drop-off instructions", value: lead.dropoff_instructions },
+              { label: "Second drop-off", value: lead.second_drop_off_location },
+              { label: "Distance (miles)", value: lead.distance_miles != null ? String(lead.distance_miles) : null },
+            ],
+          },
+        ]
+      : []),
+    {
+      title: "Quote",
+      rows: [
+        { label: "Quoted price", value: money(lead.quoted_price) },
+        { label: "Additional charges", value: money(lead.additional_charges) },
+        { label: "Total quote", value: money(quoteTotal) },
+        { label: "Quote notes", value: lead.quote_notes },
+      ],
+    },
+  ];
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -102,6 +178,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           </div>
         ))}
       </div>
+
+      {intakeSections.map((section) => {
+        const rows = section.rows.filter((r) => r.value);
+        if (rows.length === 0) return null;
+        return (
+          <div key={section.title}>
+            <h2 className="mb-2 text-sm font-semibold">{section.title}</h2>
+            <div className="grid grid-cols-1 gap-x-6 gap-y-2 rounded-lg border border-black/10 p-4 sm:grid-cols-2">
+              {rows.map((r) => (
+                <div key={r.label} className="flex justify-between gap-4 text-sm">
+                  <span className="text-black/50">{r.label}</span>
+                  <span className="text-right font-medium">{r.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Jobs ({linkedJobs?.length ?? 0})</h2>

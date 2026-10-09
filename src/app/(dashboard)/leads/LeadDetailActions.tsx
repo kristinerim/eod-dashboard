@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { LEAD_DISPOSITIONS } from "@/lib/constants";
 import { markLeadLost, reopenLead, deleteLead } from "./lead-actions";
-import ConvertToJobForm from "./ConvertToJobForm";
 import LeadForm from "./LeadForm";
 import type { Lead } from "./LeadsTable";
 
@@ -165,8 +164,9 @@ export default function LeadDetailActions({
       )}
 
       {converting && (
-        <ConvertToJobForm
+        <LeadForm
           lead={lead}
+          startAtConvert
           onClose={() => setConverting(false)}
           agentOptions={agentOptions}
           currentRole={currentRole}

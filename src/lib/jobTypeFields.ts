@@ -1,5 +1,8 @@
 import {
   CAN_GO_TO_NEUTRAL_OPTIONS,
+  CAN_ROLL_OPTIONS,
+  CAN_STEER_OPTIONS,
+  VEHICLE_TYPE_OPTIONS,
   TIRE_CONDITION_OPTIONS,
   DRIVETRAIN_OPTIONS,
   GOOD_SPARE_TIRE_OPTIONS,
@@ -31,11 +34,15 @@ export type JobDetailFieldKey =
   | "trailer_weight"
   | "trailer_length"
   | "trailer_width"
-  | "trailer_height";
+  | "trailer_height"
+  | "vehicle_type"
+  | "additional_service_details"
+  | "can_roll"
+  | "can_steer";
 
 interface JobDetailFieldDef {
   label: string;
-  kind: "text" | "number" | "select" | "note";
+  kind: "text" | "number" | "select" | "note" | "textarea";
   options?: string[];
 }
 
@@ -68,15 +75,26 @@ export const JOB_DETAIL_FIELD_DEFS: Record<JobDetailFieldKey, JobDetailFieldDef>
   trailer_length: { label: "Length", kind: "text" },
   trailer_width: { label: "Width", kind: "text" },
   trailer_height: { label: "Height", kind: "text" },
+  vehicle_type: { label: "Vehicle Type", kind: "select", options: VEHICLE_TYPE_OPTIONS },
+  additional_service_details: { label: "Additional Service Details", kind: "textarea" },
+  can_roll: { label: "Can Roll", kind: "select", options: CAN_ROLL_OPTIONS },
+  can_steer: { label: "Can Steer", kind: "select", options: CAN_STEER_OPTIONS },
 };
 
-const VEHICLE_BASE: JobDetailFieldKey[] = ["year_make_model", "vin_or_lpn", "color", "issue"];
+const VEHICLE_BASE: JobDetailFieldKey[] = [
+  "year_make_model",
+  "vehicle_type",
+  "vin_or_lpn",
+  "color",
+  "issue",
+  "additional_service_details",
+];
 const CARD_FIELDS: JobDetailFieldKey[] = ["customer_card_last4", "customer_billing_address"];
 
 // Job Type -> which fields apply, in display order. Adding a job type or
 // field later is just another entry here (plus a JOB_DETAIL_FIELD_DEFS
 // entry for a genuinely new field) — no form restructuring needed.
-export const JOB_TYPE_FIELD_KEYS: Record<string, JobDetailFieldKey[]> = {
+const BASE_JOB_TYPE_FIELD_KEYS: Record<string, JobDetailFieldKey[]> = {
   "Towing Service": [
     ...VEHICLE_BASE,
     "can_go_to_neutral",
@@ -225,3 +243,13 @@ export const JOB_TYPE_FIELD_KEYS: Record<string, JobDetailFieldKey[]> = {
   "Fuel and Tow Service": [...VEHICLE_BASE, "service_location", ...CARD_FIELDS],
   "Winch Out and Tow": [...VEHICLE_BASE, "service_location", ...CARD_FIELDS],
 };
+
+// Can Roll / Can Steer sit right alongside Can Go to Neutral — the same
+// towing and recovery job types that already ask about neutral are the ones
+// that need to know whether the vehicle rolls and steers.
+export const JOB_TYPE_FIELD_KEYS: Record<string, JobDetailFieldKey[]> = Object.fromEntries(
+  Object.entries(BASE_JOB_TYPE_FIELD_KEYS).map(([type, keys]) => [
+    type,
+    keys.flatMap((k): JobDetailFieldKey[] => (k === "can_go_to_neutral" ? ["can_roll", "can_steer", k] : [k])),
+  ])
+);

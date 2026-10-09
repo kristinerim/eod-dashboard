@@ -56,7 +56,7 @@ export default async function ReportDetailPage({
   const openLeads = await fetchAllRows<OpenLead>(() =>
     supabase
       .from("leads")
-      .select("id, lead_number, customer_name, customer_phone, state, notes")
+      .select("*")
       .eq("status", "open")
   );
 

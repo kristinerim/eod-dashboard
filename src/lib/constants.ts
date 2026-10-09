@@ -201,6 +201,36 @@ export const JOB_TYPES = [
 ];
 
 export const CAN_GO_TO_NEUTRAL_OPTIONS = ["Yes", "No", "Unknown"];
+export const CAN_ROLL_OPTIONS = CAN_GO_TO_NEUTRAL_OPTIONS;
+export const CAN_STEER_OPTIONS = CAN_GO_TO_NEUTRAL_OPTIONS;
+
+export const VEHICLE_TYPE_OPTIONS = [
+  "Car / Sedan",
+  "SUV / Crossover",
+  "Pickup Truck",
+  "Van / Minivan",
+  "Motorcycle",
+  "RV / Motorhome",
+  "Box Truck",
+  "Semi / Tractor-Trailer",
+  "Bus",
+  "Trailer",
+  "Other",
+];
+
+export const PAYMENT_AUTH_STATUSES = ["Not Requested", "Pending", "Authorized", "Declined", "Failed"];
+
+// Where a lead sits in the quote conversation. "quoting" is the default until
+// the agent explicitly saves the quote or records the customer's answer.
+export const QUOTE_STATUSES = ["quoting", "quoted", "accepted", "declined", "follow_up"] as const;
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number];
+export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
+  quoting: "Quoting",
+  quoted: "Quote Saved",
+  accepted: "Customer Accepted",
+  declined: "Customer Declined",
+  follow_up: "Follow-Up Needed",
+};
 
 export const TIRE_CONDITION_OPTIONS = ["Good", "Flat", "Blew Out", "Fell Off", "Damaged", "Unknown"];
 
@@ -226,6 +256,20 @@ export const FINAL_CHECK_OPTIONS = [
   "No Customer's Written Confirmation",
   "Vendor Has No Picture",
   "No Picture and No Written Confirmation",
+];
+
+export const PENDING_COMPLETION_STATUS = "Service Rendered – Pending Completion";
+
+export const JOB_STATUS_SUGGESTIONS = [
+  "Appointment",
+  "Converted",
+  "Dispatched",
+  "In Progress",
+  "On Hold",
+  "Needs Attention",
+  PENDING_COMPLETION_STATUS,
+  "Completed",
+  "Cancelled",
 ];
 
 export const PENDING_COMPLETION_SUBSTATUSES = [

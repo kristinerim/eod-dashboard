@@ -1,17 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { PENDING_COMPLETION_SUBSTATUSES } from "@/lib/constants";
+import { intakeFieldsFromForm } from "@/lib/intake";
+import { numberOrNull, strOrNull } from "@/lib/formParse";
 
-export function numberOrNull(v: FormDataEntryValue | null): number | null {
-  if (v === null || v === "") return null;
-  const n = Number(v);
-  return Number.isNaN(n) ? null : n;
-}
-
-export function strOrNull(v: FormDataEntryValue | null): string | null {
-  if (v === null) return null;
-  const s = String(v).trim();
-  return s === "" ? null : s;
-}
+export { numberOrNull, strOrNull };
 
 // datetime-local inputs (e.g. "2026-07-16T14:30") have no timezone; the team
 // works in Philippine Time, so treat the entered value as PHT and convert to
@@ -167,6 +159,10 @@ export function jobFieldsFromForm(formData: FormData) {
       : (job_amount ?? 0) - vendors_fee - (refunded_to_client ?? 0);
 
   return {
+    // Every column shared with leads (service type, locations, vehicle,
+    // service details, drop-off, customer, quote notes) — see lib/intake.ts.
+    ...intakeFieldsFromForm(formData),
+
     agent: strOrNull(formData.get("agent")),
     dispatcher: strOrNull(formData.get("dispatcher")),
     job_number: strOrNull(formData.get("job_number")),
@@ -180,9 +176,6 @@ export function jobFieldsFromForm(formData: FormData) {
     appointment_at: datetimeLocalPHTToIso(formData.get("appointment_at")),
     time_converted: datetimeLocalPHTToIso(formData.get("time_converted")),
     time_dispatched: datetimeLocalPHTToIso(formData.get("time_dispatched")),
-    state: strOrNull(formData.get("state")),
-    customer_name: strOrNull(formData.get("customer_name")),
-    customer_phone: strOrNull(formData.get("customer_phone")),
     customer_charged_via: strOrNull(formData.get("customer_charged_via")),
     vendor_paid_via: strOrNull(formData.get("vendor_paid_via")),
     notes: strOrNull(formData.get("notes")),
@@ -193,51 +186,17 @@ export function jobFieldsFromForm(formData: FormData) {
     final_checked_by_zumi: strOrNull(formData.get("final_checked_by_zumi")),
     pending_completion_substatus: strOrNull(formData.get("pending_completion_substatus")),
 
-    // Client Details
-    client_company_name: strOrNull(formData.get("client_company_name")),
-    client_email: strOrNull(formData.get("client_email")),
-    phone_extension: strOrNull(formData.get("phone_extension")),
-
-    // Service Location
-    service_street_address: strOrNull(formData.get("service_street_address")),
-    service_unit: strOrNull(formData.get("service_unit")),
-    service_city: strOrNull(formData.get("service_city")),
-    service_zip: strOrNull(formData.get("service_zip")),
-    service_country: strOrNull(formData.get("service_country")),
-    service_latitude: numberOrNull(formData.get("service_latitude")),
-    service_longitude: numberOrNull(formData.get("service_longitude")),
-
     // Job Details
     job_name: strOrNull(formData.get("job_name")),
-    job_type: strOrNull(formData.get("job_type")),
 
-    // Job Details — dynamic, job-type-specific fields (see src/lib/jobTypeFields.ts).
-    // Only the fields relevant to the currently-selected job type are mounted
-    // in the form, so this naturally never picks up a stale value from a
-    // previously-selected job type.
-    year_make_model: strOrNull(formData.get("year_make_model")),
-    vin_or_lpn: strOrNull(formData.get("vin_or_lpn")),
-    color: strOrNull(formData.get("color")),
-    issue: strOrNull(formData.get("issue")),
-    can_go_to_neutral: strOrNull(formData.get("can_go_to_neutral")),
-    tire_condition: strOrNull(formData.get("tire_condition")),
-    drivetrain: strOrNull(formData.get("drivetrain")),
-    drop_off_location: strOrNull(formData.get("drop_off_location")),
-    second_drop_off_location: strOrNull(formData.get("second_drop_off_location")),
-    distance_miles: numberOrNull(formData.get("distance_miles")),
+    // Dispatch & operations
+    payment_authorization_status: strOrNull(formData.get("payment_authorization_status")),
+    dispatch_notes: strOrNull(formData.get("dispatch_notes")),
+    preferred_vendor: strOrNull(formData.get("preferred_vendor")),
+
+    // Customer payment authorization (shown in the dispatch step, not the intake)
     customer_card_last4: strOrNull(formData.get("customer_card_last4")),
     customer_billing_address: strOrNull(formData.get("customer_billing_address")),
-    with_good_spare_tire: strOrNull(formData.get("with_good_spare_tire")),
-    locking_lug_nut: strOrNull(formData.get("locking_lug_nut")),
-    number_of_gallons: numberOrNull(formData.get("number_of_gallons")),
-    fuel_type: strOrNull(formData.get("fuel_type")),
-    tire_size: strOrNull(formData.get("tire_size")),
-    trailer_type: strOrNull(formData.get("trailer_type")),
-    loaded_with: strOrNull(formData.get("loaded_with")),
-    trailer_weight: strOrNull(formData.get("trailer_weight")),
-    trailer_length: strOrNull(formData.get("trailer_length")),
-    trailer_width: strOrNull(formData.get("trailer_width")),
-    trailer_height: strOrNull(formData.get("trailer_height")),
 
     // Schedule
     schedule_start_at: datetimeLocalPHTToIso(formData.get("schedule_start_at")),

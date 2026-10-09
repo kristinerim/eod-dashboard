@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import LeadForm from "./LeadForm";
+import { QUOTE_STATUS_LABELS } from "@/lib/constants";
 
 export interface Lead {
   id: string;
@@ -22,6 +23,13 @@ export interface Lead {
   job_id: string | null;
   converted_at: string | null;
   created_at: string;
+  job_type: string | null;
+  year_make_model: string | null;
+  service_city: string | null;
+  dropoff_city: string | null;
+  quoted_price: number | null;
+  additional_charges: number | null;
+  quote_status: "quoting" | "quoted" | "accepted" | "declined" | "follow_up";
 }
 
 function formatDateTime(d: string | null) {
@@ -68,7 +76,7 @@ export default function LeadsTable({
     return leads.filter((l) => {
       if (statusFilter && l.status !== statusFilter) return false;
       if (!q) return true;
-      return [l.lead_number, l.agent, l.customer_name, l.customer_phone, l.notes].some((f) =>
+      return [l.lead_number, l.agent, l.customer_name, l.customer_phone, l.notes, l.job_type, l.year_make_model].some((f) =>
         String(f ?? "").toLowerCase().includes(q)
       );
     });
@@ -106,6 +114,8 @@ export default function LeadsTable({
               <th className="whitespace-nowrap px-3 py-2 font-medium">Lead #</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Agent</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Service</th>
+              <th className="whitespace-nowrap px-3 py-2 font-medium">Quote</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Customer</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">Phone</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">State</th>
@@ -135,6 +145,18 @@ export default function LeadsTable({
                   <StatusBadge status={l.status} />
                 </td>
                 <td className="whitespace-nowrap px-3 py-2">{l.agent ?? "-"}</td>
+                <td className="whitespace-nowrap px-3 py-2">{l.job_type ?? "-"}</td>
+                <td className="whitespace-nowrap px-3 py-2">
+                  {l.quoted_price != null || l.additional_charges != null
+                    ? ((l.quoted_price ?? 0) + (l.additional_charges ?? 0)).toLocaleString("en-US", {
+                        style: "currency",
+                        currency: "USD",
+                      })
+                    : "-"}{" "}
+                  <span className="text-xs text-black/40">
+                    {l.status === "open" && l.quote_status ? QUOTE_STATUS_LABELS[l.quote_status] : ""}
+                  </span>
+                </td>
                 <td className="whitespace-nowrap px-3 py-2">{l.customer_name ?? "-"}</td>
                 <td className="whitespace-nowrap px-3 py-2">{l.customer_phone ?? "-"}</td>
                 <td className="whitespace-nowrap px-3 py-2">{l.state ?? "-"}</td>
@@ -144,7 +166,7 @@ export default function LeadsTable({
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-black/50">
+                <td colSpan={11} className="px-3 py-6 text-center text-black/50">
                   No leads match.
                 </td>
               </tr>

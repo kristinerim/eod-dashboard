@@ -119,6 +119,7 @@ export default async function JobDetailPage({
             : "-",
         },
         { label: "Email address", value: job.client_email ?? "-" },
+        ...(job.caller_id ? [{ label: "Caller ID", value: job.caller_id }] : []),
       ],
     },
     {
@@ -132,6 +133,9 @@ export default async function JobDetailPage({
         { label: "Country", value: job.service_country ?? "-" },
         { label: "Latitude", value: job.service_latitude ?? "-" },
         { label: "Longitude", value: job.service_longitude ?? "-" },
+        ...(job.service_location_notes
+          ? [{ label: "Additional location details", value: job.service_location_notes }]
+          : []),
       ],
     },
     {
@@ -168,6 +172,9 @@ export default async function JobDetailPage({
             label: JOB_DETAIL_FIELD_DEFS[key].label,
             value: job[key as keyof typeof job] ?? "-",
           })),
+        ...(job.dropoff_instructions ? [{ label: "Drop-off instructions", value: job.dropoff_instructions }] : []),
+        ...(job.preferred_vendor ? [{ label: "Preferred vendor", value: job.preferred_vendor }] : []),
+        ...(job.dispatch_notes ? [{ label: "Dispatch notes", value: job.dispatch_notes }] : []),
       ],
     },
     {
@@ -211,7 +218,12 @@ export default async function JobDetailPage({
           ),
         },
         { label: "Profit", value: formatCurrency(job.profit) },
+        ...(job.additional_charges ? [{ label: "Additional charges", value: formatCurrency(job.additional_charges) }] : []),
+        ...(job.quote_notes ? [{ label: "Quote notes", value: job.quote_notes }] : []),
         { label: "Charged via", value: job.customer_charged_via ?? "-" },
+        ...(job.payment_authorization_status
+          ? [{ label: "Payment authorization", value: job.payment_authorization_status }]
+          : []),
         { label: "Paid via", value: job.vendor_paid_via ?? "-" },
         { label: "Card expiry", value: job.card_expiry ?? "-" },
         { label: "Billing address", value: job.billing_address ?? "-" },
