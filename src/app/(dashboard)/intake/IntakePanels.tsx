@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { JOB_TYPES, US_STATE_CODES } from "@/lib/constants";
 import { JOB_DETAIL_FIELD_DEFS, type JobDetailFieldKey } from "@/lib/jobTypeFields";
-import { jobTypeHasSecondDropOff, stepFieldKeys } from "@/lib/intake";
+import { jobTypeHasSecondDropOff, jobTypeNeedsDropOff, stepFieldKeys } from "@/lib/intake";
 import { findCustomerByPhone, type CustomerMatch } from "./intake-actions";
 import { setFieldValue } from "./useFormSnapshot";
 import AddressAutocomplete from "./AddressAutocomplete";
@@ -271,7 +271,7 @@ export function ServiceStep({ values }: { values: Values }) {
 
 // 2. Service Location -----------------------------------------------------
 
-export function LocationStep({ values, formRef }: { values: Values; formRef: FormRef }) {
+export function LocationStep({ values, formRef, jobType }: { values: Values; formRef: FormRef; jobType: string }) {
   return (
     <div className="space-y-3">
       <AddressAutocomplete
@@ -307,6 +307,17 @@ export function LocationStep({ values, formRef }: { values: Values; formRef: For
         <TextField name="service_latitude" label="Latitude" values={values} type="number" step="any" />
         <TextField name="service_longitude" label="Longitude" values={values} type="number" step="any" />
       </div>
+
+      {jobTypeNeedsDropOff(jobType) && (
+        <div className="space-y-3 border-t border-black/10 pt-4">
+          <header>
+            <h4 className="text-sm font-semibold text-black/80">Drop-off location</h4>
+            <p className="text-xs italic text-black/50">&ldquo;Where would you like the vehicle towed?&rdquo;</p>
+          </header>
+          <DynamicFieldGrid keys={stepFieldKeys("dropoff", jobType)} values={values} jobType={jobType} formRef={formRef} />
+          <p className="text-xs text-black/40">Distance is entered manually for now.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -323,21 +334,7 @@ export function DetailsStep({ values, jobType }: { values: Values; jobType: stri
   return <DynamicFieldGrid keys={stepFieldKeys("details", jobType)} values={values} jobType={jobType} />;
 }
 
-// 5. Drop-Off Location ----------------------------------------------------
-
-export function DropOffStep({ values, jobType, formRef }: { values: Values; jobType: string; formRef: FormRef }) {
-  return (
-    <div className="space-y-3">
-      <DynamicFieldGrid keys={stepFieldKeys("dropoff", jobType)} values={values} jobType={jobType} formRef={formRef} />
-      <p className="text-xs text-black/40">
-        Distance is entered manually for now — it will calculate automatically from the pickup and drop-off once a
-        maps provider is connected.
-      </p>
-    </div>
-  );
-}
-
-// 6. Customer Information -------------------------------------------------
+// 5. Customer Information -------------------------------------------------
 
 export function CustomerStep({
   values,
@@ -429,7 +426,7 @@ export function CustomerStep({
   );
 }
 
-// 7. Pricing and Quote ----------------------------------------------------
+// 6. Pricing and Quote ----------------------------------------------------
 
 function num(v: string | undefined): number {
   return Number(v) || 0;

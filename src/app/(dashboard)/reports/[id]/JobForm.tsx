@@ -15,7 +15,6 @@ import {
   INTAKE_STEPS,
   buildIntakeSummary,
   intakeInitialFromRecord,
-  jobTypeNeedsDropOff,
   stepFieldKeys,
   type IntakeStepId,
 } from "@/lib/intake";
@@ -39,7 +38,6 @@ import {
   LocationStep,
   VehicleStep,
   DetailsStep,
-  DropOffStep,
   CustomerStep,
   QuoteStep,
 } from "../../intake/IntakePanels";
@@ -155,7 +153,7 @@ export default function JobForm({
   }, [selectedLeadId, sync]);
 
   const jobType = snapshot.job_type ?? initial.job_type ?? "";
-  const steps = JOB_STEPS.filter((s) => s.id !== "dropoff" || jobTypeNeedsDropOff(jobType));
+  const steps = JOB_STEPS;
   const cardKeys = stepFieldKeys("card", jobType);
   const summary = buildIntakeSummary({ ...snapshot, job_status: jobStatus }, "job");
 
@@ -318,7 +316,6 @@ export default function JobForm({
     location: !!(snapshot.service_street_address || snapshot.service_city),
     vehicle: !!(snapshot.vehicle_make || snapshot.vehicle_model || snapshot.vehicle_year),
     details: !!snapshot.issue,
-    dropoff: !!(snapshot.dropoff_street_address || snapshot.dropoff_city),
     customer: !!(snapshot.customer_name && snapshot.customer_phone),
     quote: !!snapshot.job_amount,
     convert: !!snapshot.job_number,
@@ -393,7 +390,7 @@ export default function JobForm({
                 <ServiceStep values={initial} />
               </StepPanel>
               <StepPanel step={stepDef("location")} active={active}>
-                <LocationStep values={initial} formRef={formRef} />
+                <LocationStep values={initial} formRef={formRef} jobType={jobType} />
               </StepPanel>
               <StepPanel step={stepDef("vehicle")} active={active}>
                 <VehicleStep values={initial} jobType={jobType} />
@@ -401,11 +398,6 @@ export default function JobForm({
               <StepPanel step={stepDef("details")} active={active}>
                 <DetailsStep values={initial} jobType={jobType} />
               </StepPanel>
-              {jobTypeNeedsDropOff(jobType) && (
-                <StepPanel step={stepDef("dropoff")} active={active}>
-                  <DropOffStep values={initial} jobType={jobType} formRef={formRef} />
-                </StepPanel>
-              )}
               <StepPanel step={stepDef("customer")} active={active}>
                 <CustomerStep values={initial} formRef={formRef} excludeLeadId={undefined} />
               </StepPanel>

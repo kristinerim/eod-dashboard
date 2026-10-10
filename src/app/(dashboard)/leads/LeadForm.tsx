@@ -12,7 +12,7 @@ import {
   QUOTE_STATUS_LABELS,
   type QuoteStatus,
 } from "@/lib/constants";
-import { INTAKE_STEPS, buildIntakeSummary, intakeInitialFromRecord, jobTypeNeedsDropOff, type IntakeStepId } from "@/lib/intake";
+import { INTAKE_STEPS, buildIntakeSummary, intakeInitialFromRecord, type IntakeStepId } from "@/lib/intake";
 import { saveLead, convertLeadToJob, type SaveLeadIntent } from "./lead-actions";
 import type { Lead } from "./LeadsTable";
 import IntakeShell, { StepPanel } from "../intake/IntakeShell";
@@ -27,7 +27,6 @@ import {
   LocationStep,
   VehicleStep,
   DetailsStep,
-  DropOffStep,
   CustomerStep,
   QuoteStep,
   inputCls,
@@ -94,7 +93,7 @@ export default function LeadForm({
   const jobType = snapshot.job_type ?? initial.job_type ?? "";
   const accepted = quoteStatus === "accepted";
 
-  const steps = INTAKE_STEPS.filter((s) => s.id !== "dropoff" || jobTypeNeedsDropOff(jobType));
+  const steps = INTAKE_STEPS;
 
   // The job amount defaults to whatever was quoted, but stays editable.
   const quoteTotal = (Number(snapshot.quoted_price) || 0) + (Number(snapshot.additional_charges) || 0);
@@ -109,7 +108,6 @@ export default function LeadForm({
     location: !!(snapshot.service_street_address || snapshot.service_city),
     vehicle: !!(snapshot.vehicle_make || snapshot.vehicle_model || snapshot.vehicle_year),
     details: !!snapshot.issue,
-    dropoff: !!(snapshot.dropoff_street_address || snapshot.dropoff_city),
     customer: !!(snapshot.customer_name && snapshot.customer_phone),
     quote: !!snapshot.quoted_price,
     convert: false,
@@ -248,7 +246,7 @@ export default function LeadForm({
               <ServiceStep values={initial} />
             </StepPanel>
             <StepPanel step={stepDef("location")} active={active}>
-              <LocationStep values={initial} formRef={formRef} />
+              <LocationStep values={initial} formRef={formRef} jobType={jobType} />
             </StepPanel>
             <StepPanel step={stepDef("vehicle")} active={active}>
               <VehicleStep values={initial} jobType={jobType} />
@@ -256,11 +254,6 @@ export default function LeadForm({
             <StepPanel step={stepDef("details")} active={active}>
               <DetailsStep values={initial} jobType={jobType} />
             </StepPanel>
-            {jobTypeNeedsDropOff(jobType) && (
-              <StepPanel step={stepDef("dropoff")} active={active}>
-                <DropOffStep values={initial} jobType={jobType} formRef={formRef} />
-              </StepPanel>
-            )}
             <StepPanel step={stepDef("customer")} active={active}>
               <CustomerStep values={initial} formRef={formRef} excludeLeadId={lead?.id}>
                 <div className="grid grid-cols-2 gap-3">
