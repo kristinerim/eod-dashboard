@@ -45,6 +45,10 @@ async function prepareContactedVendors(
   const goaError = validateContactedVendorsGoaAmounts(rows);
   if (goaError) return { error: goaError };
 
+  if (rows.filter((r) => r.is_assigned).length > 1) {
+    return { error: "Only one vendor can be assigned to a job." };
+  }
+
   const ids = Array.from(new Set(rows.map((r) => r.vendor_id).filter((id): id is string => !!id)));
   const tiers = new Map<string, string>();
   if (ids.length > 0) {

@@ -86,7 +86,7 @@ export default async function JobDetailPage({
 
   const { data: contactedVendors } = await supabase
     .from("job_contacted_vendors")
-    .select("id, vendor_name, phone_number, eta_given, goa, goa_amount, vendor_id, quote_amount, notes, vendor_tier, tl_approved_by")
+    .select("id, vendor_name, phone_number, eta_given, goa, goa_amount, vendor_id, quote_amount, notes, vendor_tier, tl_approved_by, is_assigned")
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
 
@@ -341,6 +341,9 @@ export default async function JobDetailPage({
                         </Link>
                       ) : (
                         (v.vendor_name ?? "-")
+                      )}
+                      {v.is_assigned && (
+                        <div className="text-xs font-medium text-green-700">Assigned to this job</div>
                       )}
                       {v.vendor_tier && v.vendor_tier !== "preferred" && v.vendor_tier !== "non_preferred" && (
                         <div className="text-xs text-amber-700">

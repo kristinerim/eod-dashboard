@@ -1242,3 +1242,9 @@ alter table job_contacted_vendors add column if not exists vendor_tier text;
 alter table job_contacted_vendors add column if not exists tl_approved_by text;
 
 create index if not exists job_contacted_vendors_vendor_id_idx on job_contacted_vendors(vendor_id);
+
+-- Contacted Vendors: the one vendor assigned to the job
+alter table job_contacted_vendors add column if not exists is_assigned boolean not null default false;
+
+create unique index if not exists job_contacted_vendors_one_assigned
+  on job_contacted_vendors(job_id) where is_assigned;

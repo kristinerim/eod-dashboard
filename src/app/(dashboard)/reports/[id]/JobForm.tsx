@@ -22,7 +22,9 @@ import {
 import { createJob, updateJob } from "./job-actions";
 import type { ContactedVendorRow } from "./job-fields";
 import type { Job } from "./JobsTable";
-import { listApproverNames, type NearbyVendor } from "../../intake/vendor-search-actions";
+import { listApproverNames } from "../../intake/vendor-search-actions";
+import RecommendedVendors, { type VendorRef } from "../../intake/RecommendedVendors";
+import { setFieldValue } from "../../intake/useFormSnapshot";
 import { needsTeamLeaderApproval } from "@/lib/vendorSearch";
 import { TierBadge } from "../../vendors/TierBadge";
 import { formatPhoneDisplay, type VendorTier } from "@/lib/vendors";
@@ -78,6 +80,7 @@ function newVendorRow(): VendorRow {
     notes: null,
     vendor_tier: null,
     tl_approved_by: null,
+    is_assigned: false,
   };
 }
 
@@ -179,23 +182,64 @@ export default function JobForm({
     setVendorRows((rows) => [...rows, newVendorRow()]);
   }
 
-  // From the nearby-vendor panel: add the vendor once, already linked to the
-  // Vendors directory so the saved row keeps its tier and profile link.
-  function addNearbyVendor(v: NearbyVendor) {
-    setVendorRows((rows) =>
-      rows.some((r) => r.vendor_id === v.id)
-        ? rows
-        : [
-            ...rows,
-            {
-              ...newVendorRow(),
-              vendor_name: v.name,
-              phone_number: formatPhoneDisplay(v.phone),
-              vendor_id: v.id,
-              vendor_tier: v.tier,
-            },
-          ]
-    );
+  // Called / Assigned boxes in Recommended Vendors. They only ever reflect the
+  // Contacted Vendors rows below: ticking Called adds the vendor's row (already
+  // linked to the Vendors directory), and nothing is ticked for the agent.
+  function rowFor(v: VendorRef): VendorRow {
+    return {
+      ...newVendorRow(),
+      vendor_name: v.name,
+      phone_number: formatPhoneDisplay(v.phone),
+      vendor_id: v.id,
+      vendor_tier: v.tier,
+    };
+  }
+
+  function rowHasDetails(r: VendorRow) {
+    return Boolean(r.quote_amount !== null || r.notes || r.eta_given || r.goa || r.tl_approved_by);
+  }
+
+  // The assigned vendor's name carries into Job Details.
+  function showAssignedInJobDetails(name: string | null) {
+    setFieldValue(formRef.current, "vendor_name", name ?? "");
+  }
+
+  function recordCalled(v: VendorRef, checked: boolean) {
+    if (checked) {
+      setVendorRows((rows) => (rows.some((r) => r.vendor_id === v.id) ? rows : [...rows, rowFor(v)]));
+      return;
+    }
+    const row = vendorRows.find((r) => r.vendor_id === v.id);
+    if (!row) return;
+    if (
+      rowHasDetails(row) &&
+      !window.confirm(`Remove ${v.name} from Contacted Vendors? Its quote, ETA and notes will be deleted.`)
+    ) {
+      return;
+    }
+    setVendorRows((rows) => rows.filter((r) => r.id !== row.id));
+    if (row.is_assigned) showAssignedInJobDetails(null);
+  }
+
+  function recordAssigned(v: VendorRef, checked: boolean) {
+    if (checked) {
+      setVendorRows((rows) =>
+        (rows.some((r) => r.vendor_id === v.id) ? rows : [...rows, rowFor(v)]).map((r) => ({
+          ...r,
+          is_assigned: r.vendor_id === v.id,
+        }))
+      );
+      showAssignedInJobDetails(v.name);
+    } else {
+      setVendorRows((rows) => rows.map((r) => (r.vendor_id === v.id ? { ...r, is_assigned: false } : r)));
+      showAssignedInJobDetails(null);
+    }
+  }
+
+  // The same checkbox on a Contacted Vendors row (also works for hand-typed rows).
+  function setRowAssigned(row: VendorRow, checked: boolean) {
+    setVendorRows((rows) => rows.map((r) => ({ ...r, is_assigned: checked && r.id === row.id })));
+    showAssignedInJobDetails(checked ? row.vendor_name : null);
   }
 
   function removeVendorRow(id: string) {
@@ -349,13 +393,7 @@ export default function JobForm({
                 <ServiceStep values={initial} />
               </StepPanel>
               <StepPanel step={stepDef("location")} active={active}>
-                <LocationStep
-                  values={initial}
-                  formRef={formRef}
-                  snapshot={snapshot}
-                  onAddVendor={addNearbyVendor}
-                  addedVendorIds={vendorRows.map((r) => r.vendor_id).filter((id): id is string => !!id)}
-                />
+                <LocationStep values={initial} formRef={formRef} />
               </StepPanel>
               <StepPanel step={stepDef("vehicle")} active={active}>
                 <VehicleStep values={initial} jobType={jobType} />
@@ -611,19 +649,27 @@ export default function JobForm({
 
           <Section title="Contacted Vendors">
             <p className="text-xs text-black/50">
-              Add vendors from the Nearby vendors panel on the Service Location step, or add one by hand below.
+              Tick Called on a Recommended Vendor to add it here, or add a vendor by hand below. Check Assigned on the vendor chosen for this job.
             </p>
             <div className="space-y-2">
               {vendorRows.map((row) => (
                 <div key={row.id} className="grid grid-cols-12 items-end gap-2 rounded border border-black/10 p-2">
-                  {row.vendor_id && (
-                    <div className="col-span-12 flex flex-wrap items-center gap-2 text-xs">
+                  <div className="col-span-12 flex flex-wrap items-center gap-3 text-xs">
+                    {row.vendor_id && (
                       <Link href={`/vendors/${row.vendor_id}`} target="_blank" className="underline underline-offset-2">
                         View vendor profile ↗
                       </Link>
-                      {row.vendor_tier && <TierBadge tier={row.vendor_tier as VendorTier} />}
-                    </div>
-                  )}
+                    )}
+                    {row.vendor_tier && <TierBadge tier={row.vendor_tier as VendorTier} />}
+                    <label className="flex items-center gap-1.5 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={row.is_assigned}
+                        onChange={(e) => setRowAssigned(row, e.target.checked)}
+                      />
+                      Assigned to this job
+                    </label>
+                  </div>
                   <div className="col-span-4">
                     <Field label="Vendor name">
                       <input
@@ -936,6 +982,15 @@ export default function JobForm({
           </Section>
 
             </StepPanel>
+
+            <RecommendedVendors
+              snapshot={snapshot}
+              formRef={formRef}
+              mode="job"
+              contacted={vendorRows}
+              onCalled={recordCalled}
+              onAssigned={recordAssigned}
+            />
 
             {error && <p className="text-sm font-medium text-red-600">{error}</p>}
           </IntakeShell>

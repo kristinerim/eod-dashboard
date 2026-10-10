@@ -7,8 +7,6 @@ import { jobTypeHasSecondDropOff, stepFieldKeys } from "@/lib/intake";
 import { findCustomerByPhone, type CustomerMatch } from "./intake-actions";
 import { setFieldValue } from "./useFormSnapshot";
 import AddressAutocomplete from "./AddressAutocomplete";
-import NearbyVendorsPanel from "./NearbyVendorsPanel";
-import type { NearbyVendor } from "./vendor-search-actions";
 
 export const inputCls = "w-full rounded border border-black/20 px-2 py-1.5 text-sm";
 
@@ -273,19 +271,7 @@ export function ServiceStep({ values }: { values: Values }) {
 
 // 2. Service Location -----------------------------------------------------
 
-export function LocationStep({
-  values,
-  formRef,
-  snapshot,
-  onAddVendor,
-  addedVendorIds,
-}: {
-  values: Values;
-  formRef: FormRef;
-  snapshot: Values;
-  onAddVendor?: (vendor: NearbyVendor) => void;
-  addedVendorIds?: string[];
-}) {
+export function LocationStep({ values, formRef }: { values: Values; formRef: FormRef }) {
   return (
     <div className="space-y-3">
       <AddressAutocomplete
@@ -321,7 +307,6 @@ export function LocationStep({
         <TextField name="service_latitude" label="Latitude" values={values} type="number" step="any" />
         <TextField name="service_longitude" label="Longitude" values={values} type="number" step="any" />
       </div>
-      <NearbyVendorsPanel snapshot={snapshot} onAdd={onAddVendor} addedIds={addedVendorIds} />
     </div>
   );
 }

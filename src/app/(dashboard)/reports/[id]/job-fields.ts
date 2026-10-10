@@ -232,6 +232,8 @@ export interface ContactedVendorRow {
   vendor_tier: string | null;
   // Team leader who approved using a DNC Tier 1 / Tier 2 vendor.
   tl_approved_by: string | null;
+  // The one vendor chosen to handle the job.
+  is_assigned: boolean;
 }
 
 // The Contacted Vendors list is a client-managed repeatable row group (add/
@@ -273,6 +275,7 @@ export function contactedVendorsFromForm(formData: FormData): ContactedVendorRow
       notes: str(row.notes),
       vendor_tier: str(row.vendor_tier),
       tl_approved_by: str(row.tl_approved_by),
+      is_assigned: row.is_assigned === true,
     });
   }
   return rows;

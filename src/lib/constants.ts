@@ -284,3 +284,7 @@ export const PENDING_COMPLETION_SUBSTATUSES = [
   "On Hold",
   "Needs Attention",
 ];
+
+// The team's Google My Maps vendor map (read-only viewer link) and the Hub's
+// own full vendor list, offered from the Recommended Vendors section.
+export const VENDOR_MAP_URL = "https://www.google.com/maps/d/viewer?mid=1CNjaav1RH4oD1ZCvO0ZcBTTMqiL616U";

@@ -14,7 +14,10 @@ import {
   serviceNeedForJobType,
 } from "@/lib/vendorSearch";
 
-export type NearbyVendor = {
+// A recommended vendor. Distances here are straight-line from the vendors'
+// stored coordinates (no Google call); exact drive times are fetched
+// separately, only for the vendors actually on screen.
+export type RecommendedVendor = {
   id: string;
   name: string;
   phone: string | null;
@@ -23,23 +26,22 @@ export type NearbyVendor = {
   address: string | null;
   state: string | null;
   straightMiles: number;
-  driveMiles: number;
-  driveMinutes: number;
-  exactDriveTime: boolean;
+  estimatedMinutes: number;
   services: ServiceCategory[];
   servicesListed: boolean;
   heavyDutyOnly: boolean;
   approximateLocation: boolean;
 };
 
-export type NearbyResult =
+export type RecommendationResult =
   | {
       ok: true;
       radiusMiles: number;
       serviceLabel: string | null;
-      preferred: NearbyVendor[];
-      nonPreferred: NearbyVendor[];
-      needsApproval: NearbyVendor[];
+      // Preferred first, then Non Preferred, each nearest-first.
+      recommended: RecommendedVendor[];
+      // DNC Tier 1 / 2: never part of the normal list; a team leader must approve.
+      needsApproval: RecommendedVendor[];
     }
   | { error: string };
 
@@ -59,12 +61,22 @@ type VendorRow = {
   heavy_duty_only: boolean;
 };
 
-const RADII = [50, 100, 200, 400];
-const SHOW = { preferred: 6, nonPreferred: 4, needsApproval: 3 };
-
 type Candidate = VendorRow & { straightMiles: number; unlisted: boolean };
 
-async function findCandidates(
+const RADII = [50, 100, 200, 400];
+const WANT_PREFERRED = 3;
+const MAX_LISTED = 10;
+const MAX_APPROVAL = 3;
+
+async function requireUser() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return { supabase, user };
+}
+
+async function candidatesWithin(
   supabase: Awaited<ReturnType<typeof createClient>>,
   lat: number,
   lng: number,
@@ -99,16 +111,97 @@ async function findCandidates(
   return out.sort((a, b) => a.straightMiles - b.straightMiles);
 }
 
-// Exact drive time and distance from Google for the vendors being shown. One
-// request covers them all. On any failure the caller falls back to estimates.
-async function driveTimes(
-  lat: number,
-  lng: number,
-  vendors: Candidate[]
-): Promise<Map<string, { miles: number; minutes: number }>> {
-  const times = new Map<string, { miles: number; minutes: number }>();
+function shape(c: Candidate): RecommendedVendor {
+  return {
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    contactName: c.contact_name,
+    tier: c.tier,
+    address: c.address,
+    state: c.state,
+    straightMiles: c.straightMiles,
+    estimatedMinutes: estimateDrive(c.straightMiles).minutes,
+    services: c.service_categories,
+    servicesListed: !c.unlisted,
+    heavyDutyOnly: c.heavy_duty_only,
+    approximateLocation: c.location_quality === "city_only",
+  };
+}
+
+// Recommended vendors for a pinned location and job type. Uses only the
+// database: no Google request is made here.
+export async function findRecommendedVendors(input: {
+  latitude: number;
+  longitude: number;
+  jobType: string;
+}): Promise<RecommendationResult> {
+  const { supabase, user } = await requireUser();
+  if (!user) return { error: "Not signed in." };
+
+  const { latitude: lat, longitude: lng } = input;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    return { error: "The service location isn't pinned yet." };
+  }
+  const jobType = String(input.jobType ?? "").slice(0, 200);
+
+  let candidates: Candidate[] = [];
+  let radius = RADII[0];
+  try {
+    for (const r of RADII) {
+      radius = r;
+      candidates = await candidatesWithin(supabase, lat, lng, r, jobType);
+      const preferred = candidates.filter((c) => c.tier === "preferred").length;
+      const eligible = candidates.filter((c) => c.tier === "preferred" || c.tier === "non_preferred").length;
+      // Reach out until there are three Preferred vendors; keep going past 200
+      // miles only if there still aren't three vendors of any kind.
+      if (preferred >= WANT_PREFERRED) break;
+      if (r >= 200 && eligible >= WANT_PREFERRED) break;
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Couldn't search vendors." };
+  }
+
+  const tierOrder = (t: VendorTier) => (t === "preferred" ? 0 : 1);
+  const recommended = candidates
+    .filter((c) => c.tier === "preferred" || c.tier === "non_preferred")
+    .sort((a, b) => tierOrder(a.tier) - tierOrder(b.tier) || a.straightMiles - b.straightMiles)
+    .slice(0, MAX_LISTED)
+    .map(shape);
+  const needsApproval = candidates
+    .filter((c) => c.tier === "dnc_tier_1" || c.tier === "dnc_tier_2")
+    .slice(0, MAX_APPROVAL)
+    .map(shape);
+
+  return {
+    ok: true,
+    radiusMiles: radius,
+    serviceLabel: serviceNeedForJobType(jobType)?.label ?? null,
+    recommended,
+    needsApproval,
+  };
+}
+
+// Exact drive time and distance from Google, for just the vendors on screen.
+// Coordinates come from the database, never from the browser.
+export async function getDriveTimes(input: {
+  latitude: number;
+  longitude: number;
+  vendorIds: string[];
+}): Promise<Record<string, { miles: number; minutes: number }>> {
+  const { supabase, user } = await requireUser();
   const key = process.env.GOOGLE_MAPS_SERVER_KEY;
-  if (!key || vendors.length === 0) return times;
+  const { latitude: lat, longitude: lng } = input;
+  const ids = Array.from(new Set(input.vendorIds ?? []))
+    .filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+    .slice(0, 12);
+  if (!user || !key || ids.length === 0 || !Number.isFinite(lat) || !Number.isFinite(lng)) return {};
+
+  const { data } = await supabase.from("vendors").select("id,latitude,longitude").in("id", ids);
+  const vendors = (data ?? []).filter((v) => v.latitude !== null && v.longitude !== null);
+  if (vendors.length === 0) return {};
+
+  const out: Record<string, { miles: number; minutes: number }> = {};
   try {
     const res = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", {
       method: "POST",
@@ -127,7 +220,7 @@ async function driveTimes(
       }),
       cache: "no-store",
     });
-    if (!res.ok) return times;
+    if (!res.ok) return {};
     const body = (await res.json()) as {
       destinationIndex?: number;
       duration?: string;
@@ -138,86 +231,44 @@ async function driveTimes(
       if (el.destinationIndex === undefined || el.condition !== "ROUTE_EXISTS" || !el.duration) continue;
       const seconds = Number.parseInt(el.duration, 10);
       if (!Number.isFinite(seconds)) continue;
-      times.set(vendors[el.destinationIndex].id, {
+      out[vendors[el.destinationIndex].id] = {
         miles: (el.distanceMeters ?? 0) / 1609.344,
         minutes: Math.max(1, Math.round(seconds / 60)),
-      });
+      };
     }
   } catch {
-    // estimates are used instead
+    // the page keeps showing estimates
   }
-  return times;
+  return out;
 }
 
-export async function findNearbyVendors(input: {
-  latitude: number;
-  longitude: number;
-  jobType: string;
-}): Promise<NearbyResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+// Pins a typed-in service location (when the agent didn't use address search).
+export async function geocodeServiceAddress(
+  address: string
+): Promise<{ latitude: number; longitude: number } | { error: string }> {
+  const { user } = await requireUser();
+  const key = process.env.GOOGLE_MAPS_SERVER_KEY;
   if (!user) return { error: "Not signed in." };
+  if (!key) return { error: "Address lookup isn't connected." };
+  const text = String(address ?? "").trim().slice(0, 300);
+  if (text.length < 5) return { error: "Address is too short." };
 
-  const { latitude: lat, longitude: lng } = input;
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-    return { error: "Pin the service location first (search the address, or enter latitude and longitude)." };
-  }
-
-  const jobType = String(input.jobType ?? "").slice(0, 200);
-  let candidates: Candidate[] = [];
-  let radius = RADII[0];
+  const url = new URL("https://maps.googleapis.com/maps/api/geocode/json");
+  url.searchParams.set("address", text);
+  url.searchParams.set("components", "country:US|country:CA");
+  url.searchParams.set("key", key);
   try {
-    for (const r of RADII) {
-      radius = r;
-      candidates = await findCandidates(supabase, lat, lng, r, jobType);
-      if (candidates.filter((c) => c.tier === "preferred").length >= SHOW.preferred) break;
-    }
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Couldn't search vendors." };
-  }
-
-  const byTier = (tiers: VendorTier[], n: number) => candidates.filter((c) => tiers.includes(c.tier)).slice(0, n);
-  const picked = {
-    preferred: byTier(["preferred"], SHOW.preferred),
-    nonPreferred: byTier(["non_preferred"], SHOW.nonPreferred),
-    needsApproval: byTier(["dnc_tier_1", "dnc_tier_2"], SHOW.needsApproval),
-  };
-
-  const all = [...picked.preferred, ...picked.nonPreferred, ...picked.needsApproval];
-  const exact = await driveTimes(lat, lng, all);
-
-  const shape = (c: Candidate): NearbyVendor => {
-    const real = exact.get(c.id);
-    const est = estimateDrive(c.straightMiles);
-    return {
-      id: c.id,
-      name: c.name,
-      phone: c.phone,
-      contactName: c.contact_name,
-      tier: c.tier,
-      address: c.address,
-      state: c.state,
-      straightMiles: c.straightMiles,
-      driveMiles: real?.miles ?? est.miles,
-      driveMinutes: real?.minutes ?? est.minutes,
-      exactDriveTime: Boolean(real),
-      services: c.service_categories,
-      servicesListed: !c.unlisted,
-      heavyDutyOnly: c.heavy_duty_only,
-      approximateLocation: c.location_quality === "city_only",
+    const res = await fetch(url, { cache: "no-store" });
+    const body = (await res.json()) as {
+      status: string;
+      results: { geometry: { location: { lat: number; lng: number } } }[];
     };
-  };
-
-  return {
-    ok: true,
-    radiusMiles: radius,
-    serviceLabel: serviceNeedForJobType(jobType)?.label ?? null,
-    preferred: picked.preferred.map(shape),
-    nonPreferred: picked.nonPreferred.map(shape),
-    needsApproval: picked.needsApproval.map(shape),
-  };
+    if (body.status !== "OK" || !body.results[0]) return { error: "Couldn't find that address." };
+    const loc = body.results[0].geometry.location;
+    return { latitude: loc.lat, longitude: loc.lng };
+  } catch {
+    return { error: "Address lookup failed." };
+  }
 }
 
 // Team leaders and admins who can approve using a DNC Tier 1 / 2 vendor.
