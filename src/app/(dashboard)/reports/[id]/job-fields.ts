@@ -224,6 +224,14 @@ export interface ContactedVendorRow {
   eta_given: string | null;
   goa: boolean;
   goa_amount: number | null;
+  // Set when the row was added from the nearby-vendor panel (or linked to the
+  // Vendors directory). The tier is copied from the directory when saved.
+  vendor_id: string | null;
+  quote_amount: number | null;
+  notes: string | null;
+  vendor_tier: string | null;
+  // Team leader who approved using a DNC Tier 1 / Tier 2 vendor.
+  tl_approved_by: string | null;
 }
 
 // The Contacted Vendors list is a client-managed repeatable row group (add/
@@ -251,7 +259,21 @@ export function contactedVendorsFromForm(formData: FormData): ContactedVendorRow
     const eta_given = typeof row.eta_given === "string" ? row.eta_given.trim() || null : null;
     if (!vendor_name && !phone_number && !eta_given) continue;
     const goa_amount = typeof row.goa_amount === "number" && !Number.isNaN(row.goa_amount) ? row.goa_amount : null;
-    rows.push({ vendor_name, phone_number, eta_given, goa: row.goa === true, goa_amount });
+    const str = (v: unknown) => (typeof v === "string" ? v.trim() || null : null);
+    const quote_amount = typeof row.quote_amount === "number" && !Number.isNaN(row.quote_amount) ? row.quote_amount : null;
+    const vendor_id = typeof row.vendor_id === "string" && /^[0-9a-f-]{36}$/i.test(row.vendor_id) ? row.vendor_id : null;
+    rows.push({
+      vendor_name,
+      phone_number,
+      eta_given,
+      goa: row.goa === true,
+      goa_amount,
+      vendor_id,
+      quote_amount,
+      notes: str(row.notes),
+      vendor_tier: str(row.vendor_tier),
+      tl_approved_by: str(row.tl_approved_by),
+    });
   }
   return rows;
 }

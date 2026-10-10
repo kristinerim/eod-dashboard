@@ -86,7 +86,7 @@ export default async function JobDetailPage({
 
   const { data: contactedVendors } = await supabase
     .from("job_contacted_vendors")
-    .select("id, vendor_name, phone_number, eta_given, goa, goa_amount")
+    .select("id, vendor_name, phone_number, eta_given, goa, goa_amount, vendor_id, quote_amount, notes, vendor_tier, tl_approved_by")
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
 
@@ -327,16 +327,34 @@ export default async function JobDetailPage({
                   <th className="px-4 py-2 font-medium">ETA given</th>
                   <th className="px-4 py-2 font-medium">GOA</th>
                   <th className="px-4 py-2 font-medium">GOA Amount</th>
+                  <th className="px-4 py-2 font-medium">Quote</th>
+                  <th className="px-4 py-2 font-medium">Notes</th>
                 </tr>
               </thead>
               <tbody>
                 {contactedVendors.map((v) => (
                   <tr key={v.id} className="border-t border-black/10">
-                    <td className="px-4 py-2">{v.vendor_name ?? "-"}</td>
+                    <td className="px-4 py-2">
+                      {v.vendor_id ? (
+                        <Link href={`/vendors/${v.vendor_id}`} className="underline underline-offset-2">
+                          {v.vendor_name ?? "Vendor"}
+                        </Link>
+                      ) : (
+                        (v.vendor_name ?? "-")
+                      )}
+                      {v.vendor_tier && v.vendor_tier !== "preferred" && v.vendor_tier !== "non_preferred" && (
+                        <div className="text-xs text-amber-700">
+                          {v.vendor_tier === "dnc_tier_1" ? "DNC Tier 1" : "DNC Tier 2"}
+                          {v.tl_approved_by ? ` — approved by ${v.tl_approved_by}` : ""}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-2">{v.phone_number ?? "-"}</td>
                     <td className="px-4 py-2">{v.eta_given ?? "-"}</td>
                     <td className="px-4 py-2">{v.goa ? "Yes" : "No"}</td>
                     <td className="px-4 py-2">{v.goa ? formatCurrency(v.goa_amount) : "-"}</td>
+                    <td className="px-4 py-2">{v.quote_amount !== null ? formatCurrency(v.quote_amount) : "-"}</td>
+                    <td className="px-4 py-2 whitespace-pre-wrap">{v.notes ?? "-"}</td>
                   </tr>
                 ))}
               </tbody>

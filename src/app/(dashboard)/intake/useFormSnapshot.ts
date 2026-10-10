@@ -52,5 +52,6 @@ export function setFieldValue(form: HTMLFormElement | null, name: string, value:
         ? HTMLTextAreaElement.prototype
         : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(input, value);
-  input.dispatchEvent(new Event("input", { bubbles: true }));
+  // React listens for "change" on a <select> and "input" on text fields.
+  input.dispatchEvent(new Event(input instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
 }

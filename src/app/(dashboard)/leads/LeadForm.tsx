@@ -247,7 +247,7 @@ export default function LeadForm({
               <ServiceStep values={initial} />
             </StepPanel>
             <StepPanel step={stepDef("location")} active={active}>
-              <LocationStep values={initial} />
+              <LocationStep values={initial} formRef={formRef} snapshot={snapshot} />
             </StepPanel>
             <StepPanel step={stepDef("vehicle")} active={active}>
               <VehicleStep values={initial} jobType={jobType} />
@@ -257,7 +257,7 @@ export default function LeadForm({
             </StepPanel>
             {jobTypeNeedsDropOff(jobType) && (
               <StepPanel step={stepDef("dropoff")} active={active}>
-                <DropOffStep values={initial} jobType={jobType} />
+                <DropOffStep values={initial} jobType={jobType} formRef={formRef} />
               </StepPanel>
             )}
             <StepPanel step={stepDef("customer")} active={active}>

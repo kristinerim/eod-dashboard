@@ -6,6 +6,9 @@ import { JOB_DETAIL_FIELD_DEFS, type JobDetailFieldKey } from "@/lib/jobTypeFiel
 import { jobTypeHasSecondDropOff, stepFieldKeys } from "@/lib/intake";
 import { findCustomerByPhone, type CustomerMatch } from "./intake-actions";
 import { setFieldValue } from "./useFormSnapshot";
+import AddressAutocomplete from "./AddressAutocomplete";
+import NearbyVendorsPanel from "./NearbyVendorsPanel";
+import type { NearbyVendor } from "./vendor-search-actions";
 
 export const inputCls = "w-full rounded border border-black/20 px-2 py-1.5 text-sm";
 
@@ -127,10 +130,26 @@ function YearMakeModel({ values }: { values: Values }) {
   );
 }
 
-function DropOffAddress({ values, heading }: { values: Values; heading?: string }) {
+type FormRef = React.RefObject<HTMLFormElement | null>;
+
+function DropOffAddress({ values, heading, formRef }: { values: Values; heading?: string; formRef?: FormRef }) {
   return (
     <div className="space-y-3">
       {heading && <div className="text-xs font-semibold text-black/70">{heading}</div>}
+      {formRef && (
+        <AddressAutocomplete
+          formRef={formRef}
+          label="Search drop-off address"
+          fields={{
+            street: "dropoff_street_address",
+            unit: "dropoff_unit",
+            city: "dropoff_city",
+            state: "dropoff_state",
+            zip: "dropoff_zip",
+            country: "dropoff_country",
+          }}
+        />
+      )}
       <TextField name="dropoff_street_address" label="Drop-off address" values={values} />
       <div className="grid grid-cols-2 gap-3">
         <TextField name="dropoff_unit" label="Unit / suite" values={values} />
@@ -155,16 +174,18 @@ function DynamicField({
   fieldKey,
   values,
   labelOverride,
+  formRef,
 }: {
   fieldKey: JobDetailFieldKey;
   values: Values;
   labelOverride?: string;
+  formRef?: FormRef;
 }) {
   const def = JOB_DETAIL_FIELD_DEFS[fieldKey];
   const label = labelOverride ?? def.label;
 
   if (fieldKey === "year_make_model") return <YearMakeModel values={values} />;
-  if (fieldKey === "drop_off_location") return <DropOffAddress values={values} heading={labelOverride} />;
+  if (fieldKey === "drop_off_location") return <DropOffAddress values={values} heading={labelOverride} formRef={formRef} />;
   if (def.kind === "note") return null;
   if (def.kind === "select") {
     return <SelectField name={fieldKey} label={label} values={values} options={def.options ?? []} />;
@@ -184,7 +205,17 @@ function DynamicField({
   return <TextField name={fieldKey} label={label} values={values} />;
 }
 
-function DynamicFieldGrid({ keys, values, jobType }: { keys: JobDetailFieldKey[]; values: Values; jobType: string }) {
+function DynamicFieldGrid({
+  keys,
+  values,
+  jobType,
+  formRef,
+}: {
+  keys: JobDetailFieldKey[];
+  values: Values;
+  jobType: string;
+  formRef?: FormRef;
+}) {
   // Two-Way Tow is the only type with a second destination — when both are
   // present the first one reads "First Drop-Off Location" for clarity.
   const hasSecond = jobTypeHasSecondDropOff(jobType);
@@ -199,6 +230,7 @@ function DynamicFieldGrid({ keys, values, jobType }: { keys: JobDetailFieldKey[]
           key={k}
           fieldKey={k}
           values={values}
+          formRef={formRef}
           labelOverride={k === "drop_off_location" && hasSecond ? "First drop-off" : undefined}
         />
       ))}
@@ -241,9 +273,34 @@ export function ServiceStep({ values }: { values: Values }) {
 
 // 2. Service Location -----------------------------------------------------
 
-export function LocationStep({ values }: { values: Values }) {
+export function LocationStep({
+  values,
+  formRef,
+  snapshot,
+  onAddVendor,
+  addedVendorIds,
+}: {
+  values: Values;
+  formRef: FormRef;
+  snapshot: Values;
+  onAddVendor?: (vendor: NearbyVendor) => void;
+  addedVendorIds?: string[];
+}) {
   return (
     <div className="space-y-3">
+      <AddressAutocomplete
+        formRef={formRef}
+        fields={{
+          street: "service_street_address",
+          unit: "service_unit",
+          city: "service_city",
+          state: "state",
+          zip: "service_zip",
+          country: "service_country",
+          lat: "service_latitude",
+          lng: "service_longitude",
+        }}
+      />
       <TextField name="service_street_address" label="Street address" values={values} />
       <div className="grid grid-cols-2 gap-3">
         <TextField name="service_unit" label="Unit / suite" values={values} />
@@ -264,14 +321,7 @@ export function LocationStep({ values }: { values: Values }) {
         <TextField name="service_latitude" label="Latitude" values={values} type="number" step="any" />
         <TextField name="service_longitude" label="Longitude" values={values} type="number" step="any" />
       </div>
-      <button
-        type="button"
-        disabled
-        title="Address autocomplete, map pin, and automatic GPS are coming once a maps provider is connected"
-        className="w-full cursor-not-allowed rounded border border-dashed border-black/20 px-2 py-2 text-xs text-black/40"
-      >
-        Search address / pin on map (coming soon)
-      </button>
+      <NearbyVendorsPanel snapshot={snapshot} onAdd={onAddVendor} addedIds={addedVendorIds} />
     </div>
   );
 }
@@ -290,10 +340,10 @@ export function DetailsStep({ values, jobType }: { values: Values; jobType: stri
 
 // 5. Drop-Off Location ----------------------------------------------------
 
-export function DropOffStep({ values, jobType }: { values: Values; jobType: string }) {
+export function DropOffStep({ values, jobType, formRef }: { values: Values; jobType: string; formRef: FormRef }) {
   return (
     <div className="space-y-3">
-      <DynamicFieldGrid keys={stepFieldKeys("dropoff", jobType)} values={values} jobType={jobType} />
+      <DynamicFieldGrid keys={stepFieldKeys("dropoff", jobType)} values={values} jobType={jobType} formRef={formRef} />
       <p className="text-xs text-black/40">
         Distance is entered manually for now — it will calculate automatically from the pickup and drop-off once a
         maps provider is connected.

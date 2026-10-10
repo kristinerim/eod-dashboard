@@ -78,3 +78,14 @@ export async function getAgentNameOptions(): Promise<string[]> {
     .filter((n): n is string => !!n);
   return Array.from(new Set([...TEAM_MEMBERS, ...dbNames])).sort();
 }
+
+// Team leaders and admins: the people who can approve using a DNC Tier 1 or
+// Tier 2 vendor.
+export async function getApproverNameOptions(): Promise<string[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("agent_name")
+    .in("role", ["team_leader", "operations_manager", "admin_coordinator"]);
+  return Array.from(new Set((data ?? []).map((p) => p.agent_name).filter((n): n is string => !!n))).sort();
+}

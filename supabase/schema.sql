@@ -1198,3 +1198,47 @@ drop trigger if exists vendors_log_tier_trigger on vendors;
 create trigger vendors_log_tier_trigger
   after insert or update on vendors
   for each row execute function vendors_log_tier();
+
+-- ---------------------------------------------------------------------------
+-- Speed: per-report job totals computed in the database instead of the Home
+-- page downloading every job ever. Mirrors summarizeJobs()/isOpenJobStatus()
+-- in src/lib/aggregate.ts: a job is "open" unless its status, trimmed and
+-- lowercased, is completed or cancelled (a blank status counts as open).
+-- Runs as the caller (not security definer), so row-level security still applies.
+-- ---------------------------------------------------------------------------
+create or replace function report_job_summaries()
+returns table (
+  report_id uuid,
+  job_count bigint,
+  total_profit numeric,
+  total_job_amount numeric,
+  total_vendor_fee numeric,
+  open_count bigint
+)
+language sql stable
+as $$
+  select
+    j.report_id,
+    count(*) as job_count,
+    coalesce(sum(j.profit), 0) as total_profit,
+    coalesce(sum(j.job_amount), 0) as total_job_amount,
+    coalesce(sum(j.vendors_fee), 0) as total_vendor_fee,
+    count(*) filter (
+      where lower(btrim(coalesce(j.job_status, ''))) not in ('completed', 'cancelled')
+    ) as open_count
+  from jobs j
+  group by j.report_id;
+$$;
+
+-- The Completed / Cancelled / Dispatched / Pending-completion pages filter by status.
+create index if not exists jobs_job_status_idx on jobs(job_status);
+create index if not exists leads_created_at_idx on leads(created_at desc);
+
+-- Contacted Vendors: vendor link, quote, notes, tier at contact, team leader approval
+alter table job_contacted_vendors add column if not exists vendor_id uuid references vendors(id) on delete set null;
+alter table job_contacted_vendors add column if not exists quote_amount numeric;
+alter table job_contacted_vendors add column if not exists notes text;
+alter table job_contacted_vendors add column if not exists vendor_tier text;
+alter table job_contacted_vendors add column if not exists tl_approved_by text;
+
+create index if not exists job_contacted_vendors_vendor_id_idx on job_contacted_vendors(vendor_id);

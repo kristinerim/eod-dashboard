@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { dateInPHT, todayISO } from "@/lib/aggregate";
-import { getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profile";
+import { getApproverNameOptions, getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profile";
 import {
   contactedVendorsFromForm,
   jobFieldsFromForm,
@@ -29,12 +29,66 @@ type ActionResult = { success: true; id?: string } | { error: string };
 // replace the job's whole contacted-vendors row set with whatever was
 // submitted, rather than diffing — simplest correct sync for a client-managed
 // repeatable row group.
+type ContactedRows = ReturnType<typeof contactedVendorsFromForm>;
+
+// Checks the submitted Contacted Vendors against the Vendors directory — the
+// directory, not the browser, decides each linked vendor's tier:
+//   - DNC Tier 3 vendors are excluded from dispatch and can never be added.
+//   - DNC Tier 1 / 2 vendors need a team leader's approval on the row.
+// Returns the rows to save (with the tier filled in from the directory).
+async function prepareContactedVendors(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  formData: FormData
+): Promise<{ error: string } | { rows: ContactedRows }> {
+  const rows = contactedVendorsFromForm(formData);
+
+  const goaError = validateContactedVendorsGoaAmounts(rows);
+  if (goaError) return { error: goaError };
+
+  const ids = Array.from(new Set(rows.map((r) => r.vendor_id).filter((id): id is string => !!id)));
+  const tiers = new Map<string, string>();
+  if (ids.length > 0) {
+    const { data, error } = await supabase.from("vendors").select("id, tier").in("id", ids);
+    if (error) return { error: error.message };
+    for (const v of data ?? []) tiers.set(v.id, v.tier);
+  }
+
+  let approvers: string[] | null = null;
+  const prepared: ContactedRows = [];
+  for (const row of rows) {
+    const tier = row.vendor_id ? (tiers.get(row.vendor_id) ?? null) : null;
+    const label = row.vendor_name ?? "this vendor";
+    if (row.vendor_id && tier === null) {
+      return { error: `${label} is no longer in the Vendors directory — remove the row or clear the link.` };
+    }
+    if (tier === "dnc_tier_3") {
+      return { error: `${label} is DNC Tier 3 and excluded from dispatch. Remove it from Contacted Vendors.` };
+    }
+    let tl_approved_by = row.tl_approved_by;
+    if (tier === "dnc_tier_1" || tier === "dnc_tier_2") {
+      if (!tl_approved_by) {
+        return { error: `${label} is ${tier === "dnc_tier_1" ? "DNC Tier 1" : "DNC Tier 2"} — select the team leader who approved using them.` };
+      }
+      approvers ??= await getApproverNameOptions();
+      if (!approvers.includes(tl_approved_by)) {
+        return { error: `${tl_approved_by} isn't a team leader or admin, so they can't approve ${label}.` };
+      }
+    } else {
+      tl_approved_by = null;
+    }
+    prepared.push({ ...row, vendor_tier: tier, tl_approved_by });
+  }
+  return { rows: prepared };
+}
+
 async function syncContactedVendors(
   supabase: Awaited<ReturnType<typeof createClient>>,
   jobId: string,
   formData: FormData
 ): Promise<string | null> {
-  const rows = contactedVendorsFromForm(formData);
+  const prepared = await prepareContactedVendors(supabase, formData);
+  if ("error" in prepared) return prepared.error;
+  const rows = prepared.rows;
 
   const { error: deleteError } = await supabase
     .from("job_contacted_vendors")
@@ -99,8 +153,8 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
   const goaError = validateGoaAmount(fields.goa, fields.goa_amount);
   if (goaError) return { error: goaError };
 
-  const vendorsGoaError = validateContactedVendorsGoaAmounts(contactedVendorsFromForm(formData));
-  if (vendorsGoaError) return { error: vendorsGoaError };
+  const vendorsCheck = await prepareContactedVendors(supabase, formData);
+  if ("error" in vendorsCheck) return { error: vendorsCheck.error };
 
   const profile = await getCurrentProfile();
   if (!isSupervisor(profile?.role)) {
@@ -273,8 +327,8 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
   const goaError = validateGoaAmount(fields.goa, fields.goa_amount);
   if (goaError) return { error: goaError };
 
-  const vendorsGoaError = validateContactedVendorsGoaAmounts(contactedVendorsFromForm(formData));
-  if (vendorsGoaError) return { error: vendorsGoaError };
+  const vendorsCheck = await prepareContactedVendors(supabase, formData);
+  if ("error" in vendorsCheck) return { error: vendorsCheck.error };
 
   const profile = await getCurrentProfile();
   if (!isSupervisor(profile?.role)) {

@@ -22,6 +22,10 @@ import {
 import { createJob, updateJob } from "./job-actions";
 import type { ContactedVendorRow } from "./job-fields";
 import type { Job } from "./JobsTable";
+import { listApproverNames, type NearbyVendor } from "../../intake/vendor-search-actions";
+import { needsTeamLeaderApproval } from "@/lib/vendorSearch";
+import { TierBadge } from "../../vendors/TierBadge";
+import { formatPhoneDisplay, type VendorTier } from "@/lib/vendors";
 import IntakeShell, { StepPanel } from "../../intake/IntakeShell";
 import { useFormSnapshot } from "../../intake/useFormSnapshot";
 import {
@@ -69,6 +73,11 @@ function newVendorRow(): VendorRow {
     eta_given: "",
     goa: false,
     goa_amount: null,
+    vendor_id: null,
+    quote_amount: null,
+    notes: null,
+    vendor_tier: null,
+    tl_approved_by: null,
   };
 }
 
@@ -116,6 +125,7 @@ export default function JobForm({
   const [etaMinutes, setEtaMinutes] = useState(job?.eta_minutes?.toString() ?? "");
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [vendorRows, setVendorRows] = useState<VendorRow[]>(contactedVendors ?? []);
+  const [approvers, setApprovers] = useState<string[] | null>(null);
   const [goa, setGoa] = useState(job?.goa ?? false);
   const [goaAmount, setGoaAmount] = useState(job?.goa_amount?.toString() ?? "");
   const isPendingCompletion = jobStatus === PENDING_COMPLETION_STATUS;
@@ -169,6 +179,25 @@ export default function JobForm({
     setVendorRows((rows) => [...rows, newVendorRow()]);
   }
 
+  // From the nearby-vendor panel: add the vendor once, already linked to the
+  // Vendors directory so the saved row keeps its tier and profile link.
+  function addNearbyVendor(v: NearbyVendor) {
+    setVendorRows((rows) =>
+      rows.some((r) => r.vendor_id === v.id)
+        ? rows
+        : [
+            ...rows,
+            {
+              ...newVendorRow(),
+              vendor_name: v.name,
+              phone_number: formatPhoneDisplay(v.phone),
+              vendor_id: v.id,
+              vendor_tier: v.tier,
+            },
+          ]
+    );
+  }
+
   function removeVendorRow(id: string) {
     setVendorRows((rows) => rows.filter((r) => r.id !== id));
   }
@@ -176,6 +205,12 @@ export default function JobForm({
   function updateVendorRow(id: string, patch: Partial<VendorRow>) {
     setVendorRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
+
+  // Only fetched when a Tier 1 / 2 vendor is actually in the list.
+  const anyNeedsApproval = vendorRows.some((r) => needsTeamLeaderApproval(r.vendor_tier));
+  useEffect(() => {
+    if (anyNeedsApproval && approvers === null) listApproverNames().then(setApprovers).catch(() => setApprovers([]));
+  }, [anyNeedsApproval, approvers]);
 
   function jump(step: IntakeStepId, message: string) {
     setActive(step);
@@ -209,6 +244,14 @@ export default function JobForm({
       return jump(
         "convert",
         `Enter the GOA amount for ${vendorMissingGoaAmount.vendor_name || "the contacted vendor"}.`
+      );
+    }
+
+    const vendorNeedingApproval = vendorRows.find((r) => needsTeamLeaderApproval(r.vendor_tier) && !r.tl_approved_by);
+    if (vendorNeedingApproval) {
+      return jump(
+        "convert",
+        `Select the team leader who approved using ${vendorNeedingApproval.vendor_name || "the contacted vendor"}.`
       );
     }
 
@@ -306,7 +349,13 @@ export default function JobForm({
                 <ServiceStep values={initial} />
               </StepPanel>
               <StepPanel step={stepDef("location")} active={active}>
-                <LocationStep values={initial} />
+                <LocationStep
+                  values={initial}
+                  formRef={formRef}
+                  snapshot={snapshot}
+                  onAddVendor={addNearbyVendor}
+                  addedVendorIds={vendorRows.map((r) => r.vendor_id).filter((id): id is string => !!id)}
+                />
               </StepPanel>
               <StepPanel step={stepDef("vehicle")} active={active}>
                 <VehicleStep values={initial} jobType={jobType} />
@@ -316,7 +365,7 @@ export default function JobForm({
               </StepPanel>
               {jobTypeNeedsDropOff(jobType) && (
                 <StepPanel step={stepDef("dropoff")} active={active}>
-                  <DropOffStep values={initial} jobType={jobType} />
+                  <DropOffStep values={initial} jobType={jobType} formRef={formRef} />
                 </StepPanel>
               )}
               <StepPanel step={stepDef("customer")} active={active}>
@@ -562,11 +611,19 @@ export default function JobForm({
 
           <Section title="Contacted Vendors">
             <p className="text-xs text-black/50">
-              Basic structure for now — this will connect to the Vendor Map later.
+              Add vendors from the Nearby vendors panel on the Service Location step, or add one by hand below.
             </p>
             <div className="space-y-2">
               {vendorRows.map((row) => (
                 <div key={row.id} className="grid grid-cols-12 items-end gap-2 rounded border border-black/10 p-2">
+                  {row.vendor_id && (
+                    <div className="col-span-12 flex flex-wrap items-center gap-2 text-xs">
+                      <Link href={`/vendors/${row.vendor_id}`} target="_blank" className="underline underline-offset-2">
+                        View vendor profile ↗
+                      </Link>
+                      {row.vendor_tier && <TierBadge tier={row.vendor_tier as VendorTier} />}
+                    </div>
+                  )}
                   <div className="col-span-4">
                     <Field label="Vendor name">
                       <input
@@ -611,6 +668,49 @@ export default function JobForm({
                       ✕
                     </button>
                   </div>
+                  <div className="col-span-3">
+                    <Field label="Quote ($)">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={row.quote_amount ?? ""}
+                        onChange={(e) =>
+                          updateVendorRow(row.id, {
+                            quote_amount: e.target.value === "" ? null : Number(e.target.value),
+                          })
+                        }
+                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                      />
+                    </Field>
+                  </div>
+                  <div className="col-span-9">
+                    <Field label="Notes">
+                      <input
+                        value={row.notes ?? ""}
+                        onChange={(e) => updateVendorRow(row.id, { notes: e.target.value })}
+                        placeholder="e.g. Said 45 minutes, wants cash on arrival"
+                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                      />
+                    </Field>
+                  </div>
+                  {needsTeamLeaderApproval(row.vendor_tier) && (
+                    <div className="col-span-12 rounded border border-amber-300 bg-amber-50 p-2">
+                      <Field label="Team leader approval (required for this vendor)">
+                        <select
+                          value={row.tl_approved_by ?? ""}
+                          onChange={(e) => updateVendorRow(row.id, { tl_approved_by: e.target.value || null })}
+                          className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                        >
+                          <option value="">Select the team leader who approved…</option>
+                          {(approvers ?? []).map((n) => (
+                            <option key={n} value={n}>
+                              {n}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                    </div>
+                  )}
                   {row.goa && (
                     <div className="col-span-12">
                       <Field label="GOA amount (required)">
