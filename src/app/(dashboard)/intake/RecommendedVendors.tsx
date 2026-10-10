@@ -29,9 +29,13 @@ export type ContactedRef = {
   eta_given: string | null;
   notes: string | null;
   tl_approved_by: string | null;
+  // Gone on Arrival happened with this vendor on this job.
+  goa: boolean;
 };
 
-export type RowPatch = Partial<Pick<ContactedRef, "quote_amount" | "goa_amount" | "eta_given" | "notes" | "tl_approved_by">>;
+export type RowPatch = Partial<
+  Pick<ContactedRef, "quote_amount" | "goa_amount" | "eta_given" | "notes" | "tl_approved_by" | "vendor_name" | "phone_number" | "goa">
+>;
 
 const INITIAL_COUNT = 5;
 type Drive = { miles: number; minutes: number };
@@ -46,14 +50,21 @@ export default function RecommendedVendors({
   snapshot,
   contacted,
   approvers,
+  savedNote,
   onStatus,
+  onRowStatus,
   onEdit,
+  onAddManual,
 }: {
   snapshot: Record<string, string>;
   contacted: ContactedRef[];
   approvers: string[];
+  savedNote?: string | null;
   onStatus: (vendor: VendorRef, status: DropdownStatus) => void;
+  // For vendors already on the job that aren't in the current search.
+  onRowStatus: (rowId: string, status: DropdownStatus) => void;
   onEdit: (rowId: string, patch: RowPatch) => void;
+  onAddManual: () => void;
 }) {
   const latStr = snapshot.service_latitude?.trim() ?? "";
   const lngStr = snapshot.service_longitude?.trim() ?? "";
@@ -109,10 +120,12 @@ export default function RecommendedVendors({
   const drives = driveByLoc[locKey] ?? {};
   const rowFor = (id: string) => contacted.find((r) => r.vendor_id === id);
   const listedIds = new Set([...recommended, ...approval].map((v) => v.id));
-  const earlier = contacted.filter((r) => r.vendor_id && !listedIds.has(r.vendor_id));
+  // Every other vendor on this job: ones from an earlier search, and ones typed in by hand.
+  const earlier = contacted.filter((r) => !r.vendor_id || !listedIds.has(r.vendor_id));
   const where = [city.trim(), state.trim()].filter(Boolean).join(", ") || (hasPin ? "Pinned location" : "—");
 
   const rowProps = { approvers, onStatus, onEdit, openId, setOpenId };
+  const earlierProps = { approvers, onRowStatus, onEdit };
 
   return (
     <section className="space-y-2 rounded-lg border border-black/10 bg-black/[0.02] p-3">
@@ -122,6 +135,9 @@ export default function RecommendedVendors({
             Recommended vendors{jobType ? ` – ${jobType}` : ""}
           </h3>
           {hasPin && jobType && <p className="text-xs text-black/50">Customer location: {where}</p>}
+          {savedNote && (
+            <p className={`text-xs ${savedNote.startsWith("Not saved") ? "text-amber-700" : "text-green-700"}`}>{savedNote}</p>
+          )}
         </div>
         <div className="flex gap-3 text-xs">
           <a href={VENDOR_MAP_URL} target="_blank" rel="noreferrer" className="underline underline-offset-2">
@@ -189,15 +205,19 @@ export default function RecommendedVendors({
       {earlier.length > 0 && (
         <div className="space-y-1">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-            Contacted earlier (not in the current search)
+            Other vendors on this job (not in the current search)
           </p>
           <Table>
             {earlier.map((r) => (
-              <EarlierRow key={r.id} row={r} {...rowProps} />
+              <EarlierRow key={r.id} row={r} {...earlierProps} />
             ))}
           </Table>
         </div>
       )}
+
+      <button type="button" onClick={onAddManual} className="text-xs font-medium underline underline-offset-2">
+        + Add a vendor that isn&apos;t listed
+      </button>
     </section>
   );
 }
@@ -303,6 +323,31 @@ function Fields({
         className={cell}
       />
     </>
+  );
+}
+
+// Per-vendor details that don't need a column: Gone on Arrival, and taking the
+// vendor off this job.
+function RowExtras({
+  row,
+  onEdit,
+  onRemove,
+}: {
+  row: ContactedRef;
+  onEdit: (rowId: string, patch: RowPatch) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-4 text-xs">
+      <label className="flex items-center gap-1.5">
+        <input type="checkbox" checked={row.goa} onChange={(e) => onEdit(row.id, { goa: e.target.checked })} />
+        Vendor went GOA (Gone on Arrival) on this job
+        {row.goa && row.goa_amount === null && <span className="text-red-600"> — enter the GOA amount</span>}
+      </label>
+      <button type="button" onClick={onRemove} className="text-red-600 underline underline-offset-2">
+        Remove from this job
+      </button>
+    </div>
   );
 }
 
@@ -425,6 +470,7 @@ function Row({
               Get a team leader&apos;s approval before assigning any job to this vendor.
             </p>
           )}
+          {row && <RowExtras row={row} onEdit={onEdit} onRemove={() => onStatus(v, "not_contacted")} />}
           <Link href={`/vendors/${v.id}`} target="_blank" className="underline underline-offset-2">
             View vendor profile ↗
           </Link>
@@ -434,25 +480,60 @@ function Row({
   );
 }
 
-function EarlierRow({ row, approvers, onStatus, onEdit }: RowShared & { row: ContactedRef }) {
+function EarlierRow({
+  row,
+  approvers,
+  onRowStatus,
+  onEdit,
+}: {
+  row: ContactedRef;
+  approvers: string[];
+  onRowStatus: (rowId: string, status: DropdownStatus) => void;
+  onEdit: (rowId: string, patch: RowPatch) => void;
+}) {
+  const linked = Boolean(row.vendor_id);
   const vendor: VendorRef = {
-    id: row.vendor_id!,
-    name: row.vendor_name ?? "Vendor",
+    id: row.vendor_id ?? row.id,
+    name: row.vendor_name || "Vendor",
     phone: row.phone_number,
     tier: (row.vendor_tier as VendorTier) ?? "non_preferred",
   };
   return (
     <div className={`border-b border-black/5 last:border-b-0 ${rowTone(row)}`}>
       <div className={`${COLS} px-2 py-1.5`}>
-        <Link href={`/vendors/${row.vendor_id}`} target="_blank" className="min-w-0 truncate font-medium hover:underline">
-          {vendor.name}
-        </Link>
-        <span>{row.vendor_tier ? <ClassBadge tier={vendor.tier} /> : null}</span>
+        {linked ? (
+          <Link href={`/vendors/${row.vendor_id}`} target="_blank" className="min-w-0 truncate font-medium hover:underline">
+            {vendor.name}
+          </Link>
+        ) : (
+          <input
+            aria-label="Vendor name"
+            placeholder="Vendor name"
+            value={row.vendor_name ?? ""}
+            onChange={(e) => onEdit(row.id, { vendor_name: e.target.value })}
+            className={cell}
+          />
+        )}
+        <span>{row.vendor_tier ? <ClassBadge tier={vendor.tier} /> : <span className="text-[11px] text-black/40">Not listed</span>}</span>
         <span className="text-xs text-black/40">—</span>
-        <span className="text-xs">{row.phone_number ?? ""}</span>
-        <Fields vendor={vendor} row={row} onStatus={onStatus} onEdit={onEdit} />
+        {linked ? (
+          <span className="text-xs">{row.phone_number ?? ""}</span>
+        ) : (
+          <input
+            aria-label="Vendor phone"
+            placeholder="Phone"
+            inputMode="tel"
+            value={row.phone_number ?? ""}
+            onChange={(e) => onEdit(row.id, { phone_number: e.target.value })}
+            className={cell}
+          />
+        )}
+        <Fields vendor={vendor} row={row} onStatus={(_v, s) => onRowStatus(row.id, s)} onEdit={onEdit} />
       </div>
       {needsTeamLeaderApproval(row.vendor_tier) && <ApprovalLine row={row} approvers={approvers} onEdit={onEdit} />}
+      <div className="border-t border-black/5 px-3 py-1.5">
+        <RowExtras row={row} onEdit={onEdit} onRemove={() => onRowStatus(row.id, "not_contacted")} />
+      </div>
     </div>
   );
 }

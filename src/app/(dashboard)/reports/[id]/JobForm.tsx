@@ -25,9 +25,8 @@ import { listApproverNames } from "../../intake/vendor-search-actions";
 import RecommendedVendors, { type RowPatch, type VendorRef } from "../../intake/RecommendedVendors";
 import { setFieldValue } from "../../intake/useFormSnapshot";
 import { needsTeamLeaderApproval } from "@/lib/vendorSearch";
-import { STATUS_LABELS, parseEtaMinutes, preferredVendorAnswer, type ContactStatus, type DropdownStatus } from "@/lib/vendorStatus";
-import { TierBadge } from "../../vendors/TierBadge";
-import { formatPhoneDisplay, type VendorTier } from "@/lib/vendors";
+import { parseEtaMinutes, preferredVendorAnswer, type ContactStatus, type DropdownStatus } from "@/lib/vendorStatus";
+import { formatPhoneDisplay } from "@/lib/vendors";
 import IntakeShell, { StepPanel } from "../../intake/IntakeShell";
 import { useFormSnapshot } from "../../intake/useFormSnapshot";
 import {
@@ -178,10 +177,6 @@ export default function JobForm({
       ? null
       : (Number(snapshot.job_amount) || 0) - (Number(vendorsFee) || 0) - (Number(refundedToClient) || 0);
 
-  function addVendorRow() {
-    setVendorRows((rows) => [...rows, newVendorRow()]);
-  }
-
   // A vendor's response on this job. Not Contacted has no row; Called, No-Go and
   // Go are rows in Contacted Vendors, each with its own quote, GOA, ETA and notes.
   function rowFor(v: VendorRef, status: ContactStatus): VendorRow {
@@ -233,9 +228,27 @@ export default function JobForm({
     );
   }
 
-  // From a row in Contacted Vendors (also covers hand-typed vendors).
-  function setRowStatus(row: VendorRow, status: ContactStatus) {
-    commitVendorRows(withStatus(vendorRows, (r) => r.id === row.id, status));
+  // For vendors already on the job that aren't in the current search — including
+  // vendors typed in by hand. Not Contacted takes the vendor off the job.
+  function setRowStatus(rowId: string, status: DropdownStatus) {
+    const row = vendorRows.find((r) => r.id === rowId);
+    if (!row) return;
+    if (status === "not_contacted") {
+      if (
+        rowHasDetails(row) &&
+        !window.confirm(`Remove ${row.vendor_name || "this vendor"} from the job? Its quote, GOA, ETA and notes will be deleted.`)
+      ) {
+        return;
+      }
+      commitVendorRows(vendorRows.filter((r) => r.id !== rowId));
+      return;
+    }
+    commitVendorRows(withStatus(vendorRows, (r) => r.id === rowId, status));
+  }
+
+  // A vendor that isn't in the Vendors directory.
+  function addManualVendor() {
+    setVendorRows((rows) => [...rows, newVendorRow()]);
   }
 
   function editVendorRow(rowId: string, patch: RowPatch) {
@@ -288,14 +301,6 @@ export default function JobForm({
     if (row.goa_amount !== null && goaAmount === String(row.goa_amount)) setGoaAmount("");
     const minutes = parseEtaMinutes(row.eta_given);
     if (minutes !== null && etaMinutes === String(minutes)) setEtaMinutes("");
-  }
-
-  function removeVendorRow(id: string) {
-    commitVendorRows(vendorRows.filter((r) => r.id !== id));
-  }
-
-  function updateVendorRow(id: string, patch: Partial<VendorRow>) {
-    commitVendorRows(vendorRows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
   // Only fetched when a Tier 1 / 2 vendor is actually in the list.
@@ -495,8 +500,11 @@ export default function JobForm({
                 snapshot={snapshot}
                 contacted={vendorRows}
                 approvers={approvers ?? []}
+                savedNote={autosaveNote}
                 onStatus={setVendorStatus}
+                onRowStatus={setRowStatus}
                 onEdit={editVendorRow}
+                onAddManual={addManualVendor}
               />
 
               <Section title="Job Details">
@@ -738,158 +746,6 @@ export default function JobForm({
             )}
           </Section>
 
-
-          <Section title="Contacted Vendors">
-            <p className="text-xs text-black/50">
-              Every vendor you mark Called, No-Go or Go in Recommended Vendors is recorded here with its own quote, GOA, ETA and notes. You can also add a vendor by hand. Only one vendor can be Go (assigned) at a time.
-            </p>
-            {autosaveNote && (
-              <p className={`text-xs ${autosaveNote.startsWith("Not saved") ? "text-amber-700" : "text-green-700"}`}>
-                {autosaveNote}
-              </p>
-            )}
-            <div className="space-y-2">
-              {vendorRows.map((row) => (
-                <div key={row.id} className="grid grid-cols-12 items-end gap-2 rounded border border-black/10 p-2">
-                  <div className="col-span-12 flex flex-wrap items-center gap-3 text-xs">
-                    {row.vendor_id && (
-                      <Link href={`/vendors/${row.vendor_id}`} target="_blank" className="underline underline-offset-2">
-                        View vendor profile ↗
-                      </Link>
-                    )}
-                    {row.vendor_tier && <TierBadge tier={row.vendor_tier as VendorTier} />}
-                    <label className="flex items-center gap-1.5 font-medium">
-                      Status
-                      <select
-                        value={row.status}
-                        onChange={(e) => setRowStatus(row, e.target.value as ContactStatus)}
-                        className={`rounded border border-black/20 px-1.5 py-0.5 ${
-                          row.status === "go" ? "bg-green-100" : row.status === "no_go" ? "bg-red-50" : ""
-                        }`}
-                      >
-                        {(["called", "no_go", "go"] as ContactStatus[]).map((st) => (
-                          <option key={st} value={st}>
-                            {STATUS_LABELS[st]}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="col-span-4">
-                    <Field label="Vendor name">
-                      <input
-                        value={row.vendor_name ?? ""}
-                        onChange={(e) => updateVendorRow(row.id, { vendor_name: e.target.value })}
-                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                      />
-                    </Field>
-                  </div>
-                  <div className="col-span-3">
-                    <Field label="Phone number">
-                      <input
-                        value={row.phone_number ?? ""}
-                        onChange={(e) => updateVendorRow(row.id, { phone_number: e.target.value })}
-                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                      />
-                    </Field>
-                  </div>
-                  <div className="col-span-2">
-                    <Field label="ETA given">
-                      <input
-                        value={row.eta_given ?? ""}
-                        onChange={(e) => updateVendorRow(row.id, { eta_given: e.target.value })}
-                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                      />
-                    </Field>
-                  </div>
-                  <div className="col-span-2 flex h-[34px] items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={row.goa}
-                      onChange={(e) => updateVendorRow(row.id, { goa: e.target.checked })}
-                    />
-                    <span className="text-xs">GOA</span>
-                  </div>
-                  <div className="col-span-1">
-                    <button
-                      type="button"
-                      onClick={() => removeVendorRow(row.id)}
-                      className="h-[34px] w-full rounded border border-black/20 text-xs text-red-600"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="col-span-3">
-                    <Field label="Quote ($)">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={row.quote_amount ?? ""}
-                        onChange={(e) =>
-                          updateVendorRow(row.id, {
-                            quote_amount: e.target.value === "" ? null : Number(e.target.value),
-                          })
-                        }
-                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                      />
-                    </Field>
-                  </div>
-                  <div className="col-span-9">
-                    <Field label="Notes">
-                      <input
-                        value={row.notes ?? ""}
-                        onChange={(e) => updateVendorRow(row.id, { notes: e.target.value })}
-                        placeholder="e.g. Said 45 minutes, wants cash on arrival"
-                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                      />
-                    </Field>
-                  </div>
-                  {needsTeamLeaderApproval(row.vendor_tier) && (
-                    <div className="col-span-12 rounded border border-amber-300 bg-amber-50 p-2">
-                      <Field label="Team leader approval (required for this vendor)">
-                        <select
-                          value={row.tl_approved_by ?? ""}
-                          onChange={(e) => updateVendorRow(row.id, { tl_approved_by: e.target.value || null })}
-                          className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                        >
-                          <option value="">Select the team leader who approved…</option>
-                          {(approvers ?? []).map((n) => (
-                            <option key={n} value={n}>
-                              {n}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                    </div>
-                  )}
-                  {(row.goa || row.goa_amount !== null) && (
-                    <div className="col-span-12">
-                      <Field label={row.goa ? "GOA amount (required)" : "GOA amount"}>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={row.goa_amount ?? ""}
-                          onChange={(e) =>
-                            updateVendorRow(row.id, {
-                              goa_amount: e.target.value === "" ? null : Number(e.target.value),
-                            })
-                          }
-                          className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
-                        />
-                      </Field>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={addVendorRow}
-              className="rounded border border-black/20 px-3 py-1.5 text-xs"
-            >
-              + Add contacted vendor
-            </button>
-          </Section>
 
 
           <Section title="Payment & Vendor Costs">
