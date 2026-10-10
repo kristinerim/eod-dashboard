@@ -1038,3 +1038,163 @@ alter table jobs add column if not exists quote_notes text;
 alter table jobs add column if not exists payment_authorization_status text;
 alter table jobs add column if not exists dispatch_notes text;
 alter table jobs add column if not exists preferred_vendor text;
+
+-- ---------------------------------------------------------------------------
+-- Vendor database (foundation for the Vendor Map). Additive only: new tables,
+-- nothing existing is changed. There is deliberately NO delete policy — vendor
+-- records are never deleted, only deactivated (is_active = false).
+--
+-- Tiers: preferred / non_preferred / dnc_tier_1 / dnc_tier_2 / dnc_tier_3.
+--   Tier 3 = excluded from dispatch. Tier 1 and 2 need team-leader approval
+--   before a job is assigned. unclassified = held out of recommendations.
+-- tier_source records WHO decided the tier: 'map' (Google My Maps as exported),
+--   'review' (a human decision during the import review), 'hub' (set in the
+--   Hub). Re-imports must never overwrite a 'review' or 'hub' tier.
+-- ---------------------------------------------------------------------------
+create table if not exists vendors (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  name_original text,
+  tier text not null default 'unclassified' check (
+    tier in ('preferred', 'non_preferred', 'dnc_tier_1', 'dnc_tier_2', 'dnc_tier_3', 'unclassified')
+  ),
+  tier_source text not null default 'hub' check (tier_source in ('map', 'review', 'hub')),
+  tier_reason text,
+  tier_changed_at timestamptz,
+  tier_changed_by uuid references auth.users(id) on delete set null,
+  contact_name text,
+  phone text,
+  secondary_phone text,
+  email text,
+  secondary_email text,
+  address text,
+  state text,
+  country text not null default 'US',
+  latitude numeric,
+  longitude numeric,
+  location_quality text not null default 'none' check (
+    location_quality in ('point', 'latlong_in_address', 'street_address', 'city_only', 'none')
+  ),
+  needs_geocode boolean not null default false,
+  service_categories text[] not null default '{}',
+  services_original text,
+  equipment text,
+  heavy_duty_capable boolean not null default false,
+  heavy_duty_only boolean not null default false,
+  source_layers text[] not null default '{}',
+  notes text,
+  import_flags text[] not null default '{}',
+  import_key text not null unique,
+  import_run_id uuid,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists vendors_phone_idx on vendors(phone);
+create index if not exists vendors_tier_idx on vendors(tier);
+create index if not exists vendors_state_idx on vendors(state);
+create index if not exists vendors_location_idx on vendors(latitude, longitude);
+
+create table if not exists vendor_tier_history (
+  id uuid primary key default gen_random_uuid(),
+  vendor_id uuid not null references vendors(id) on delete cascade,
+  old_tier text,
+  new_tier text not null,
+  reason text,
+  source text,
+  changed_by uuid references auth.users(id) on delete set null,
+  changed_at timestamptz not null default now()
+);
+
+create index if not exists vendor_tier_history_vendor_idx on vendor_tier_history(vendor_id);
+
+create table if not exists vendor_import_runs (
+  id uuid primary key default gen_random_uuid(),
+  source_file text,
+  vendors_created integer not null default 0,
+  vendors_skipped integer not null default 0,
+  notes text,
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table vendors enable row level security;
+alter table vendor_tier_history enable row level security;
+alter table vendor_import_runs enable row level security;
+
+-- Anyone who can sign in can see vendors and edit vendor details (dispatchers
+-- fill in details gradually as they work with vendors). Changing a TIER is
+-- restricted to team leaders / admins by the trigger below. No delete policy.
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename = 'vendors' and policyname = 'authenticated can read vendors') then
+    create policy "authenticated can read vendors" on vendors for select to authenticated using (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'vendors' and policyname = 'authenticated can add vendors') then
+    create policy "authenticated can add vendors" on vendors for insert to authenticated with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'vendors' and policyname = 'authenticated can update vendors') then
+    create policy "authenticated can update vendors" on vendors for update to authenticated using (true) with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'vendor_tier_history' and policyname = 'authenticated can read vendor tier history') then
+    create policy "authenticated can read vendor tier history" on vendor_tier_history for select to authenticated using (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'vendor_import_runs' and policyname = 'supervisors can read vendor import runs') then
+    create policy "supervisors can read vendor import runs" on vendor_import_runs for select to authenticated using (is_supervisor());
+  end if;
+end $$;
+
+-- Only team leaders / admins may set or change a tier (the import script runs
+-- with the service role, where auth.uid() is null, and is allowed).
+create or replace function vendors_guard_tier() returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is not null and not is_supervisor() then
+    if tg_op = 'INSERT' then
+      new.tier := 'unclassified';
+      new.tier_source := 'hub';
+    elsif new.tier is distinct from old.tier
+       or new.tier_source is distinct from old.tier_source
+       or new.tier_reason is distinct from old.tier_reason then
+      raise exception 'Only team leaders and admins can change a vendor tier';
+    end if;
+  end if;
+  if tg_op = 'UPDATE' then
+    new.updated_at := now();
+    if new.tier is distinct from old.tier then
+      new.tier_changed_at := now();
+      new.tier_changed_by := auth.uid();
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists vendors_guard_tier_trigger on vendors;
+create trigger vendors_guard_tier_trigger
+  before insert or update on vendors
+  for each row execute function vendors_guard_tier();
+
+create or replace function vendors_log_tier() returns trigger
+language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    insert into vendor_tier_history (vendor_id, old_tier, new_tier, reason, source, changed_by)
+    values (new.id, null, new.tier, new.tier_reason, new.tier_source, auth.uid());
+  elsif new.tier is distinct from old.tier then
+    insert into vendor_tier_history (vendor_id, old_tier, new_tier, reason, source, changed_by)
+    values (new.id, old.tier, new.tier, new.tier_reason, new.tier_source, auth.uid());
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists vendors_log_tier_trigger on vendors;
+create trigger vendors_log_tier_trigger
+  after insert or update on vendors
+  for each row execute function vendors_log_tier();

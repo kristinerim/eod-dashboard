@@ -1,0 +1,18 @@
+{
+  "decidedOn": "2026-10-10",
+  "removeVendors": [
+    { "name": "G&N Repair & Towing Service", "phone": "2096435999", "reason": "Vendor not found — removed per review" },
+    { "name": "ARMAN'S", "phone": "2123007886", "reason": "Vendor not found — removed per review" },
+    { "name": "Oshik", "phone": "2148465196", "reason": "Vendor not found — removed per review" },
+    { "name": "K&K Towing and Roadside", "phone": "2189356153", "reason": "Vendor not found — removed per review" },
+    { "name": "Reddy Freddy's Towing (P)", "phone": "2476035012", "reason": "Vendor not found — removed per review" },
+    { "name": "Destination Towing and Transport", "phone": "2512432831", "reason": "Vendor not found — removed per review" }
+  ],
+  "addAddresses": [
+    { "name": "B & L Towing", "address": "200 W Pine St, Warrensburg, MO 64093" },
+    { "name": "Jim's Big Tow Service", "address": "12 SE 16th St, Lee's Summit, MO 64081" },
+    { "name": "Smith's Towing", "address": "1675 Dolwick Dr, Erlanger, KY 41018" },
+    { "name": "Hall's G.E.D Towing", "address": "140 Iowa Ave, Ste 9, Belleville, IL 62220" },
+    { "name": "A&C Towing", "address": "5 Harbor Dr, Ste A, Novato, CA 94945" }
+  ]
+}

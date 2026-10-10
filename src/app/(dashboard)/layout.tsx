@@ -51,6 +51,9 @@ export default async function DashboardLayout({
           <Link href="/invoices" className="text-black/70 hover:text-black">
             Invoices
           </Link>
+          <Link href="/vendors" className="text-black/70 hover:text-black">
+            Vendors
+          </Link>
           <Link href="/weekly" className="text-black/70 hover:text-black">
             Weekly summaries
           </Link>
