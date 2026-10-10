@@ -1248,3 +1248,20 @@ alter table job_contacted_vendors add column if not exists is_assigned boolean n
 
 create unique index if not exists job_contacted_vendors_one_assigned
   on job_contacted_vendors(job_id) where is_assigned;
+
+-- Contacted Vendors: Called / No-Go / Go status; vendor phone on the job
+alter table job_contacted_vendors add column if not exists status text not null default 'called';
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'job_contacted_vendors_status_check'
+  ) then
+    alter table job_contacted_vendors
+      add constraint job_contacted_vendors_status_check check (status in ('called', 'no_go', 'go'));
+  end if;
+end $$;
+
+update job_contacted_vendors set status = 'go' where is_assigned and status = 'called';
+
+alter table jobs add column if not exists vendor_phone text;

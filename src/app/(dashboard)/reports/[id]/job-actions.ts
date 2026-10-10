@@ -22,6 +22,7 @@ import {
   isPendingCompletionStatus,
 } from "./job-fields";
 import { findOrCreateLeadForJob } from "@/lib/leadMatching";
+import { numberOrNull } from "@/lib/formParse";
 
 type ActionResult = { success: true; id?: string } | { error: string };
 
@@ -45,8 +46,8 @@ async function prepareContactedVendors(
   const goaError = validateContactedVendorsGoaAmounts(rows);
   if (goaError) return { error: goaError };
 
-  if (rows.filter((r) => r.is_assigned).length > 1) {
-    return { error: "Only one vendor can be assigned to a job." };
+  if (rows.filter((r) => r.status === "go").length > 1) {
+    return { error: "Only one vendor can be marked Go (assigned) on a job." };
   }
 
   const ids = Array.from(new Set(rows.map((r) => r.vendor_id).filter((id): id is string => !!id)));
@@ -424,5 +425,50 @@ export async function deleteJob(jobId: string): Promise<ActionResult> {
   if (error) return { error: error.message };
   revalidatePath(`/reports/${reportId}`);
   revalidatePath("/");
+  return { success: true };
+}
+
+// Saves the vendor side of a job as the agent works, without waiting for the
+// whole form to be saved: every contacted vendor's status, quote, GOA, ETA and
+// notes, plus the Job Details fields the Go vendor fills in. Nothing else on
+// the job is touched.
+export async function autosaveVendorDispatch(
+  jobId: string,
+  input: {
+    rowsJson: string;
+    job: {
+      vendor_name: string;
+      preferred_vendor: string;
+      vendor_phone: string;
+      quoted_service_amount: string;
+      goa_amount: string;
+      eta_minutes: string;
+    };
+  }
+): Promise<{ success: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const formData = new FormData();
+  formData.set("contacted_vendors_json", input.rowsJson);
+  const vendorsError = await syncContactedVendors(supabase, jobId, formData);
+  if (vendorsError) return { error: vendorsError };
+
+  const j = input.job;
+  const { error } = await supabase
+    .from("jobs")
+    .update({
+      vendor_name: strOrNull(j.vendor_name),
+      preferred_vendor: strOrNull(j.preferred_vendor),
+      vendor_phone: strOrNull(j.vendor_phone),
+      quoted_service_amount: numberOrNull(j.quoted_service_amount),
+      goa_amount: numberOrNull(j.goa_amount),
+      eta_minutes: numberOrNull(j.eta_minutes),
+    })
+    .eq("id", jobId);
+  if (error) return { error: error.message };
   return { success: true };
 }

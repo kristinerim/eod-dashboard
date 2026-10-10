@@ -110,6 +110,7 @@ export interface Job {
   payment_authorization_status: string | null;
   dispatch_notes: string | null;
   preferred_vendor: string | null;
+  vendor_phone: string | null;
 }
 
 type Column = {

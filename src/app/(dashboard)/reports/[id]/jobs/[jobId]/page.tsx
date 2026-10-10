@@ -86,7 +86,7 @@ export default async function JobDetailPage({
 
   const { data: contactedVendors } = await supabase
     .from("job_contacted_vendors")
-    .select("id, vendor_name, phone_number, eta_given, goa, goa_amount, vendor_id, quote_amount, notes, vendor_tier, tl_approved_by, is_assigned")
+    .select("id, vendor_name, phone_number, eta_given, goa, goa_amount, vendor_id, quote_amount, notes, vendor_tier, tl_approved_by, is_assigned, status")
     .eq("job_id", jobId)
     .order("created_at", { ascending: true });
 
@@ -174,6 +174,7 @@ export default async function JobDetailPage({
           })),
         ...(job.dropoff_instructions ? [{ label: "Drop-off instructions", value: job.dropoff_instructions }] : []),
         ...(job.preferred_vendor ? [{ label: "Preferred vendor", value: job.preferred_vendor }] : []),
+        ...(job.vendor_phone ? [{ label: "Vendor phone", value: job.vendor_phone }] : []),
         ...(job.dispatch_notes ? [{ label: "Dispatch notes", value: job.dispatch_notes }] : []),
       ],
     },
@@ -198,7 +199,7 @@ export default async function JobDetailPage({
         { label: "ETA (minutes)", value: job.eta_minutes ?? "-" },
         { label: "Vendor ETA (raw)", value: job.vendor_eta ?? "-" },
         { label: "GOA (Gone on Arrival)", value: job.goa ? "Yes" : "No" },
-        ...(job.goa ? [{ label: "GOA Amount", value: formatCurrency(job.goa_amount) }] : []),
+        ...(job.goa || job.goa_amount !== null ? [{ label: "GOA Amount", value: formatCurrency(job.goa_amount) }] : []),
       ],
     },
     {
@@ -323,6 +324,7 @@ export default async function JobDetailPage({
               <thead className="bg-black/5 text-left">
                 <tr>
                   <th className="px-4 py-2 font-medium">Vendor name</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
                   <th className="px-4 py-2 font-medium">Phone number</th>
                   <th className="px-4 py-2 font-medium">ETA given</th>
                   <th className="px-4 py-2 font-medium">GOA</th>
@@ -342,7 +344,7 @@ export default async function JobDetailPage({
                       ) : (
                         (v.vendor_name ?? "-")
                       )}
-                      {v.is_assigned && (
+                      {v.status === "go" && (
                         <div className="text-xs font-medium text-green-700">Assigned to this job</div>
                       )}
                       {v.vendor_tier && v.vendor_tier !== "preferred" && v.vendor_tier !== "non_preferred" && (
@@ -352,10 +354,19 @@ export default async function JobDetailPage({
                         </div>
                       )}
                     </td>
+                    <td className="px-4 py-2">
+                      {v.status === "go" ? (
+                        <span className="font-medium text-green-700">Go</span>
+                      ) : v.status === "no_go" ? (
+                        <span className="text-black/60">No-Go</span>
+                      ) : (
+                        "Called"
+                      )}
+                    </td>
                     <td className="px-4 py-2">{v.phone_number ?? "-"}</td>
                     <td className="px-4 py-2">{v.eta_given ?? "-"}</td>
                     <td className="px-4 py-2">{v.goa ? "Yes" : "No"}</td>
-                    <td className="px-4 py-2">{v.goa ? formatCurrency(v.goa_amount) : "-"}</td>
+                    <td className="px-4 py-2">{v.goa_amount !== null ? formatCurrency(v.goa_amount) : "-"}</td>
                     <td className="px-4 py-2">{v.quote_amount !== null ? formatCurrency(v.quote_amount) : "-"}</td>
                     <td className="px-4 py-2 whitespace-pre-wrap">{v.notes ?? "-"}</td>
                   </tr>

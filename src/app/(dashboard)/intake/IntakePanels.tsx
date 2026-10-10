@@ -7,6 +7,7 @@ import { jobTypeHasSecondDropOff, jobTypeNeedsDropOff, stepFieldKeys } from "@/l
 import { findCustomerByPhone, type CustomerMatch } from "./intake-actions";
 import { setFieldValue } from "./useFormSnapshot";
 import AddressAutocomplete from "./AddressAutocomplete";
+import { ServiceLocationPin, TripDistance } from "./LocationAutomation";
 
 export const inputCls = "w-full rounded border border-black/20 px-2 py-1.5 text-sm";
 
@@ -271,7 +272,17 @@ export function ServiceStep({ values }: { values: Values }) {
 
 // 2. Service Location -----------------------------------------------------
 
-export function LocationStep({ values, formRef, jobType }: { values: Values; formRef: FormRef; jobType: string }) {
+export function LocationStep({
+  values,
+  formRef,
+  jobType,
+  snapshot,
+}: {
+  values: Values;
+  formRef: FormRef;
+  jobType: string;
+  snapshot: Values;
+}) {
   return (
     <div className="space-y-3">
       <AddressAutocomplete
@@ -307,6 +318,7 @@ export function LocationStep({ values, formRef, jobType }: { values: Values; for
         <TextField name="service_latitude" label="Latitude" values={values} type="number" step="any" />
         <TextField name="service_longitude" label="Longitude" values={values} type="number" step="any" />
       </div>
+      <ServiceLocationPin snapshot={snapshot} formRef={formRef} />
 
       {jobTypeNeedsDropOff(jobType) && (
         <div className="space-y-3 border-t border-black/10 pt-4">
@@ -315,7 +327,7 @@ export function LocationStep({ values, formRef, jobType }: { values: Values; for
             <p className="text-xs italic text-black/50">&ldquo;Where would you like the vehicle towed?&rdquo;</p>
           </header>
           <DynamicFieldGrid keys={stepFieldKeys("dropoff", jobType)} values={values} jobType={jobType} formRef={formRef} />
-          <p className="text-xs text-black/40">Distance is entered manually for now.</p>
+          <TripDistance snapshot={snapshot} formRef={formRef} />
         </div>
       )}
     </div>

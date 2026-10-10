@@ -64,8 +64,8 @@ type VendorRow = {
 type Candidate = VendorRow & { straightMiles: number; unlisted: boolean };
 
 const RADII = [50, 100, 200, 400];
-const WANT_PREFERRED = 3;
-const MAX_LISTED = 10;
+const WANT_PREFERRED = 5;
+const MAX_LISTED = 12;
 const MAX_APPROVAL = 3;
 
 async function requireUser() {
@@ -182,6 +182,17 @@ export async function findRecommendedVendors(input: {
   };
 }
 
+// Drive times already worked out, shared by everyone using this server, so a
+// location that comes up again (a repeat customer, two agents on the same
+// call) doesn't cost another Google request. Rounded to ~100 m; kept a day.
+const DRIVE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const DRIVE_CACHE_MAX = 5000;
+const driveCache = new Map<string, { at: number; miles: number; minutes: number }>();
+
+function driveKey(lat: number, lng: number, vendorId: string) {
+  return `${lat.toFixed(3)},${lng.toFixed(3)}|${vendorId}`;
+}
+
 // Exact drive time and distance from Google, for just the vendors on screen.
 // Coordinates come from the database, never from the browser.
 export async function getDriveTimes(input: {
@@ -197,11 +208,20 @@ export async function getDriveTimes(input: {
     .slice(0, 12);
   if (!user || !key || ids.length === 0 || !Number.isFinite(lat) || !Number.isFinite(lng)) return {};
 
-  const { data } = await supabase.from("vendors").select("id,latitude,longitude").in("id", ids);
-  const vendors = (data ?? []).filter((v) => v.latitude !== null && v.longitude !== null);
-  if (vendors.length === 0) return {};
-
   const out: Record<string, { miles: number; minutes: number }> = {};
+  const now = Date.now();
+  const uncached: string[] = [];
+  for (const id of ids) {
+    const hit = driveCache.get(driveKey(lat, lng, id));
+    if (hit && now - hit.at < DRIVE_CACHE_TTL_MS) out[id] = { miles: hit.miles, minutes: hit.minutes };
+    else uncached.push(id);
+  }
+  if (uncached.length === 0) return out;
+
+  const { data } = await supabase.from("vendors").select("id,latitude,longitude").in("id", uncached);
+  const vendors = (data ?? []).filter((v) => v.latitude !== null && v.longitude !== null);
+  if (vendors.length === 0) return out;
+
   try {
     const res = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", {
       method: "POST",
@@ -220,7 +240,7 @@ export async function getDriveTimes(input: {
       }),
       cache: "no-store",
     });
-    if (!res.ok) return {};
+    if (!res.ok) return out;
     const body = (await res.json()) as {
       destinationIndex?: number;
       duration?: string;
@@ -231,10 +251,13 @@ export async function getDriveTimes(input: {
       if (el.destinationIndex === undefined || el.condition !== "ROUTE_EXISTS" || !el.duration) continue;
       const seconds = Number.parseInt(el.duration, 10);
       if (!Number.isFinite(seconds)) continue;
-      out[vendors[el.destinationIndex].id] = {
+      const result = {
         miles: (el.distanceMeters ?? 0) / 1609.344,
         minutes: Math.max(1, Math.round(seconds / 60)),
       };
+      out[vendors[el.destinationIndex].id] = result;
+      if (driveCache.size >= DRIVE_CACHE_MAX) driveCache.delete(driveCache.keys().next().value as string);
+      driveCache.set(driveKey(lat, lng, vendors[el.destinationIndex].id), { at: now, ...result });
     }
   } catch {
     // the page keeps showing estimates

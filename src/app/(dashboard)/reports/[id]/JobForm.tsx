@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -18,13 +18,14 @@ import {
   stepFieldKeys,
   type IntakeStepId,
 } from "@/lib/intake";
-import { createJob, updateJob } from "./job-actions";
+import { autosaveVendorDispatch, createJob, updateJob } from "./job-actions";
 import type { ContactedVendorRow } from "./job-fields";
 import type { Job } from "./JobsTable";
 import { listApproverNames } from "../../intake/vendor-search-actions";
-import RecommendedVendors, { type VendorRef } from "../../intake/RecommendedVendors";
+import RecommendedVendors, { type RowPatch, type VendorRef } from "../../intake/RecommendedVendors";
 import { setFieldValue } from "../../intake/useFormSnapshot";
 import { needsTeamLeaderApproval } from "@/lib/vendorSearch";
+import { STATUS_LABELS, parseEtaMinutes, preferredVendorAnswer, type ContactStatus, type DropdownStatus } from "@/lib/vendorStatus";
 import { TierBadge } from "../../vendors/TierBadge";
 import { formatPhoneDisplay, type VendorTier } from "@/lib/vendors";
 import IntakeShell, { StepPanel } from "../../intake/IntakeShell";
@@ -78,6 +79,7 @@ function newVendorRow(): VendorRow {
     notes: null,
     vendor_tier: null,
     tl_approved_by: null,
+    status: "called",
     is_assigned: false,
   };
 }
@@ -180,72 +182,120 @@ export default function JobForm({
     setVendorRows((rows) => [...rows, newVendorRow()]);
   }
 
-  // Called / Assigned boxes in Recommended Vendors. They only ever reflect the
-  // Contacted Vendors rows below: ticking Called adds the vendor's row (already
-  // linked to the Vendors directory), and nothing is ticked for the agent.
-  function rowFor(v: VendorRef): VendorRow {
+  // A vendor's response on this job. Not Contacted has no row; Called, No-Go and
+  // Go are rows in Contacted Vendors, each with its own quote, GOA, ETA and notes.
+  function rowFor(v: VendorRef, status: ContactStatus): VendorRow {
     return {
       ...newVendorRow(),
       vendor_name: v.name,
       phone_number: formatPhoneDisplay(v.phone),
       vendor_id: v.id,
       vendor_tier: v.tier,
+      status,
+      is_assigned: status === "go",
     };
   }
 
   function rowHasDetails(r: VendorRow) {
-    return Boolean(r.quote_amount !== null || r.notes || r.eta_given || r.goa || r.tl_approved_by);
+    return Boolean(r.quote_amount !== null || r.goa_amount !== null || r.notes || r.eta_given || r.goa || r.tl_approved_by);
   }
 
-  // The assigned vendor's name carries into Job Details.
-  function showAssignedInJobDetails(name: string | null) {
-    setFieldValue(formRef.current, "vendor_name", name ?? "");
+  // Only one vendor can be Go (assigned). Choosing a new Go vendor turns the
+  // previous one into No-Go — its quote, GOA, ETA and notes are kept as history.
+  function withStatus(rows: VendorRow[], isTarget: (r: VendorRow) => boolean, status: ContactStatus): VendorRow[] {
+    return rows.map((r) => {
+      if (isTarget(r)) return { ...r, status, is_assigned: status === "go" };
+      if (status === "go" && r.status === "go") return { ...r, status: "no_go" as const, is_assigned: false };
+      return r;
+    });
   }
 
-  function recordCalled(v: VendorRef, checked: boolean) {
-    if (checked) {
-      setVendorRows((rows) => (rows.some((r) => r.vendor_id === v.id) ? rows : [...rows, rowFor(v)]));
+  // From the Recommended Vendors list (a directory vendor, with or without a row yet).
+  function setVendorStatus(v: VendorRef, status: DropdownStatus) {
+    if (status === "not_contacted") {
+      const row = vendorRows.find((r) => r.vendor_id === v.id);
+      if (!row) return;
+      if (
+        rowHasDetails(row) &&
+        !window.confirm(`Mark ${v.name} as Not Contacted? Its quote, GOA, ETA and notes will be deleted.`)
+      ) {
+        return;
+      }
+      commitVendorRows(vendorRows.filter((r) => r.id !== row.id));
       return;
     }
-    const row = vendorRows.find((r) => r.vendor_id === v.id);
-    if (!row) return;
-    if (
-      rowHasDetails(row) &&
-      !window.confirm(`Remove ${v.name} from Contacted Vendors? Its quote, ETA and notes will be deleted.`)
-    ) {
-      return;
-    }
-    setVendorRows((rows) => rows.filter((r) => r.id !== row.id));
-    if (row.is_assigned) showAssignedInJobDetails(null);
+    commitVendorRows(
+      withStatus(
+        vendorRows.some((r) => r.vendor_id === v.id) ? vendorRows : [...vendorRows, rowFor(v, status)],
+        (r) => r.vendor_id === v.id,
+        status
+      )
+    );
   }
 
-  function recordAssigned(v: VendorRef, checked: boolean) {
-    if (checked) {
-      setVendorRows((rows) =>
-        (rows.some((r) => r.vendor_id === v.id) ? rows : [...rows, rowFor(v)]).map((r) => ({
-          ...r,
-          is_assigned: r.vendor_id === v.id,
-        }))
-      );
-      showAssignedInJobDetails(v.name);
-    } else {
-      setVendorRows((rows) => rows.map((r) => (r.vendor_id === v.id ? { ...r, is_assigned: false } : r)));
-      showAssignedInJobDetails(null);
+  // From a row in Contacted Vendors (also covers hand-typed vendors).
+  function setRowStatus(row: VendorRow, status: ContactStatus) {
+    commitVendorRows(withStatus(vendorRows, (r) => r.id === row.id, status));
+  }
+
+  function editVendorRow(rowId: string, patch: RowPatch) {
+    commitVendorRows(vendorRows.map((r) => (r.id === rowId ? { ...r, ...patch } : r)));
+  }
+
+  // The Job Details / Dispatch & Operations fields the Go vendor fills in. They
+  // reuse the job's existing fields; nothing new is created for the vendor.
+  const goSignature = (r: VendorRow | null) =>
+    r ? JSON.stringify([r.vendor_name, r.phone_number, r.vendor_tier, r.quote_amount, r.goa_amount, r.eta_given]) : "";
+
+  // Every change to the vendor rows goes through here: if the Go vendor (or one
+  // of its figures) changed, the job's own fields follow; if nobody is Go any
+  // more, only what that vendor filled in is taken back.
+  function commitVendorRows(next: VendorRow[]) {
+    const before = vendorRows.find((r) => r.status === "go") ?? null;
+    const after = next.find((r) => r.status === "go") ?? null;
+    setVendorRows(next);
+    if (after) {
+      if (goSignature(before) !== goSignature(after)) fillJobFromVendor(after);
+    } else if (before) {
+      clearJobFromVendor(before);
     }
   }
 
-  // The same checkbox on a Contacted Vendors row (also works for hand-typed rows).
-  function setRowAssigned(row: VendorRow, checked: boolean) {
-    setVendorRows((rows) => rows.map((r) => ({ ...r, is_assigned: checked && r.id === row.id })));
-    showAssignedInJobDetails(checked ? row.vendor_name : null);
+  function fillJobFromVendor(row: VendorRow) {
+    const form = formRef.current;
+    setFieldValue(form, "vendor_name", row.vendor_name ?? "");
+    if (row.vendor_tier) setFieldValue(form, "preferred_vendor", preferredVendorAnswer(row.vendor_tier));
+    setFieldValue(form, "vendor_phone", row.phone_number ?? "");
+    setFieldValue(form, "quoted_service_amount", row.quote_amount === null ? "" : String(row.quote_amount));
+    setGoaAmount(row.goa_amount === null ? "" : String(row.goa_amount));
+    const minutes = parseEtaMinutes(row.eta_given);
+    if (minutes !== null) setEtaMinutes(String(minutes));
+  }
+
+  // When the vendor is no longer Go, take back only what they filled in, and
+  // leave anything the agent has since typed over.
+  function clearJobFromVendor(row: VendorRow) {
+    const form = formRef.current;
+    const value = (name: string) => (form?.elements.namedItem(name) as HTMLInputElement | null)?.value ?? "";
+    if (value("vendor_name") === (row.vendor_name ?? "")) setFieldValue(form, "vendor_name", "");
+    if (row.vendor_tier && value("preferred_vendor") === preferredVendorAnswer(row.vendor_tier)) {
+      setFieldValue(form, "preferred_vendor", "");
+    }
+    if (value("vendor_phone") === (row.phone_number ?? "")) setFieldValue(form, "vendor_phone", "");
+    if (row.quote_amount !== null && value("quoted_service_amount") === String(row.quote_amount)) {
+      setFieldValue(form, "quoted_service_amount", "");
+    }
+    if (row.goa_amount !== null && goaAmount === String(row.goa_amount)) setGoaAmount("");
+    const minutes = parseEtaMinutes(row.eta_given);
+    if (minutes !== null && etaMinutes === String(minutes)) setEtaMinutes("");
   }
 
   function removeVendorRow(id: string) {
-    setVendorRows((rows) => rows.filter((r) => r.id !== id));
+    commitVendorRows(vendorRows.filter((r) => r.id !== id));
   }
 
   function updateVendorRow(id: string, patch: Partial<VendorRow>) {
-    setVendorRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    commitVendorRows(vendorRows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }
 
   // Only fetched when a Tier 1 / 2 vendor is actually in the list.
@@ -253,6 +303,40 @@ export default function JobForm({
   useEffect(() => {
     if (anyNeedsApproval && approvers === null) listApproverNames().then(setApprovers).catch(() => setApprovers([]));
   }, [anyNeedsApproval, approvers]);
+
+  // Vendor information is saved as the agent works (once the job exists), so a
+  // quote or a Go isn't lost if the window is closed before pressing Save.
+  const lastSavedVendors = useRef(JSON.stringify(contactedVendors ?? []));
+  const [autosaveNote, setAutosaveNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!job || isPending) return;
+    const rowsJson = JSON.stringify(vendorRows);
+    if (rowsJson === lastSavedVendors.current) return;
+    const timer = setTimeout(async () => {
+      const form = formRef.current;
+      const read = (name: string) => (form?.elements.namedItem(name) as HTMLInputElement | null)?.value ?? "";
+      const result = await autosaveVendorDispatch(job.id, {
+        rowsJson,
+        job: {
+          vendor_name: read("vendor_name"),
+          preferred_vendor: read("preferred_vendor"),
+          vendor_phone: read("vendor_phone"),
+          quoted_service_amount: read("quoted_service_amount"),
+          goa_amount: goaAmount,
+          eta_minutes: etaMinutes,
+        },
+      });
+      if ("error" in result) {
+        setAutosaveNote(`Not saved yet: ${result.error}`);
+        return;
+      }
+      lastSavedVendors.current = rowsJson;
+      setAutosaveNote("Vendor information saved ✓");
+    }, 1500);
+    return () => clearTimeout(timer);
+    // goaAmount / etaMinutes are read when the timer fires; they follow the vendor rows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendorRows, job, isPending]);
 
   function jump(step: IntakeStepId, message: string) {
     setActive(step);
@@ -390,7 +474,7 @@ export default function JobForm({
                 <ServiceStep values={initial} />
               </StepPanel>
               <StepPanel step={stepDef("location")} active={active}>
-                <LocationStep values={initial} formRef={formRef} jobType={jobType} />
+                <LocationStep values={initial} formRef={formRef} jobType={jobType} snapshot={snapshot} />
               </StepPanel>
               <StepPanel step={stepDef("vehicle")} active={active}>
                 <VehicleStep values={initial} jobType={jobType} />
@@ -407,6 +491,14 @@ export default function JobForm({
             </Fragment>
 
             <StepPanel step={stepDef("convert")} active={active}>
+              <RecommendedVendors
+                snapshot={snapshot}
+                contacted={vendorRows}
+                approvers={approvers ?? []}
+                onStatus={setVendorStatus}
+                onEdit={editVendorRow}
+              />
+
               <Section title="Job Details">
                 <div className="grid grid-cols-3 gap-3">
                   <Field label="Job # (required)">
@@ -424,6 +516,14 @@ export default function JobForm({
                     />
                   </Field>
                   <TextField name="preferred_vendor" label="Preferred vendor" values={initial} />
+                  <Field label="Vendor phone">
+                    <input
+                      name="vendor_phone"
+                      inputMode="tel"
+                      defaultValue={(job?.vendor_phone as string | null | undefined) ?? ""}
+                      className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                    />
+                  </Field>
                 </div>
 
                 <Field label="Job name">
@@ -624,8 +724,8 @@ export default function JobForm({
               />
               GOA (Gone on Arrival)
             </label>
-            {goa && (
-              <Field label="GOA amount (required)">
+            {(goa || goaAmount !== "") && (
+              <Field label={goa ? "GOA amount (required)" : "GOA amount"}>
                 <input
                   name="goa_amount"
                   type="number"
@@ -641,8 +741,13 @@ export default function JobForm({
 
           <Section title="Contacted Vendors">
             <p className="text-xs text-black/50">
-              Tick Called on a Recommended Vendor to add it here, or add a vendor by hand below. Check Assigned on the vendor chosen for this job.
+              Every vendor you mark Called, No-Go or Go in Recommended Vendors is recorded here with its own quote, GOA, ETA and notes. You can also add a vendor by hand. Only one vendor can be Go (assigned) at a time.
             </p>
+            {autosaveNote && (
+              <p className={`text-xs ${autosaveNote.startsWith("Not saved") ? "text-amber-700" : "text-green-700"}`}>
+                {autosaveNote}
+              </p>
+            )}
             <div className="space-y-2">
               {vendorRows.map((row) => (
                 <div key={row.id} className="grid grid-cols-12 items-end gap-2 rounded border border-black/10 p-2">
@@ -654,12 +759,20 @@ export default function JobForm({
                     )}
                     {row.vendor_tier && <TierBadge tier={row.vendor_tier as VendorTier} />}
                     <label className="flex items-center gap-1.5 font-medium">
-                      <input
-                        type="checkbox"
-                        checked={row.is_assigned}
-                        onChange={(e) => setRowAssigned(row, e.target.checked)}
-                      />
-                      Assigned to this job
+                      Status
+                      <select
+                        value={row.status}
+                        onChange={(e) => setRowStatus(row, e.target.value as ContactStatus)}
+                        className={`rounded border border-black/20 px-1.5 py-0.5 ${
+                          row.status === "go" ? "bg-green-100" : row.status === "no_go" ? "bg-red-50" : ""
+                        }`}
+                      >
+                        {(["called", "no_go", "go"] as ContactStatus[]).map((st) => (
+                          <option key={st} value={st}>
+                            {STATUS_LABELS[st]}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                   </div>
                   <div className="col-span-4">
@@ -749,9 +862,9 @@ export default function JobForm({
                       </Field>
                     </div>
                   )}
-                  {row.goa && (
+                  {(row.goa || row.goa_amount !== null) && (
                     <div className="col-span-12">
-                      <Field label="GOA amount (required)">
+                      <Field label={row.goa ? "GOA amount (required)" : "GOA amount"}>
                         <input
                           type="number"
                           step="0.01"
@@ -974,15 +1087,6 @@ export default function JobForm({
           </Section>
 
             </StepPanel>
-
-            <RecommendedVendors
-              snapshot={snapshot}
-              formRef={formRef}
-              mode="job"
-              contacted={vendorRows}
-              onCalled={recordCalled}
-              onAssigned={recordAssigned}
-            />
 
             {error && <p className="text-sm font-medium text-red-600">{error}</p>}
           </IntakeShell>

@@ -64,7 +64,7 @@ export default async function ReportDetailPage({
   const contactedVendorRows = await fetchAllRows<ContactedVendorRow & { id: string; job_id: string }>(() =>
     supabase
       .from("job_contacted_vendors")
-      .select("id, job_id, vendor_name, phone_number, eta_given, goa, goa_amount, vendor_id, quote_amount, notes, vendor_tier, tl_approved_by, is_assigned")
+      .select("id, job_id, vendor_name, phone_number, eta_given, goa, goa_amount, vendor_id, quote_amount, notes, vendor_tier, tl_approved_by, is_assigned, status")
       .in("job_id", jobIds.length > 0 ? jobIds : [""])
   );
   const contactedVendorsByJobId: Record<string, (ContactedVendorRow & { id: string })[]> = {};

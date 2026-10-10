@@ -17,7 +17,6 @@ import { saveLead, convertLeadToJob, type SaveLeadIntent } from "./lead-actions"
 import type { Lead } from "./LeadsTable";
 import IntakeShell, { StepPanel } from "../intake/IntakeShell";
 import { useFormSnapshot } from "../intake/useFormSnapshot";
-import RecommendedVendors from "../intake/RecommendedVendors";
 import {
   Field,
   SelectField,
@@ -246,7 +245,7 @@ export default function LeadForm({
               <ServiceStep values={initial} />
             </StepPanel>
             <StepPanel step={stepDef("location")} active={active}>
-              <LocationStep values={initial} formRef={formRef} jobType={jobType} />
+              <LocationStep values={initial} formRef={formRef} jobType={jobType} snapshot={snapshot} />
             </StepPanel>
             <StepPanel step={stepDef("vehicle")} active={active}>
               <VehicleStep values={initial} jobType={jobType} />
@@ -416,8 +415,6 @@ export default function LeadForm({
                 </div>
               </div>
             </StepPanel>
-
-            <RecommendedVendors snapshot={snapshot} formRef={formRef} mode="lead" />
 
             {error && <p className="text-sm font-medium text-red-600">{error}</p>}
           </IntakeShell>

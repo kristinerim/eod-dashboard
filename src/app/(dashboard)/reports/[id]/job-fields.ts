@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PENDING_COMPLETION_SUBSTATUSES } from "@/lib/constants";
 import { intakeFieldsFromForm } from "@/lib/intake";
 import { numberOrNull, strOrNull } from "@/lib/formParse";
+import { isContactStatus, type ContactStatus } from "@/lib/vendorStatus";
 
 export { numberOrNull, strOrNull };
 
@@ -171,6 +172,7 @@ export function jobFieldsFromForm(formData: FormData) {
     refunded_to_client,
     profit,
     vendor_name: strOrNull(formData.get("vendor_name")),
+    vendor_phone: strOrNull(formData.get("vendor_phone")),
     job_status,
     eta_minutes: numberOrNull(formData.get("eta_minutes")),
     appointment_at: datetimeLocalPHTToIso(formData.get("appointment_at")),
@@ -232,7 +234,9 @@ export interface ContactedVendorRow {
   vendor_tier: string | null;
   // Team leader who approved using a DNC Tier 1 / Tier 2 vendor.
   tl_approved_by: string | null;
-  // The one vendor chosen to handle the job.
+  // This vendor's response on this job (never their permanent classification).
+  status: ContactStatus;
+  // True for the one vendor marked Go; kept in step with `status`.
   is_assigned: boolean;
 }
 
@@ -261,6 +265,8 @@ export function contactedVendorsFromForm(formData: FormData): ContactedVendorRow
     const eta_given = typeof row.eta_given === "string" ? row.eta_given.trim() || null : null;
     if (!vendor_name && !phone_number && !eta_given) continue;
     const goa_amount = typeof row.goa_amount === "number" && !Number.isNaN(row.goa_amount) ? row.goa_amount : null;
+    // Rows saved before statuses existed: an assigned vendor was a Go.
+    const status: ContactStatus = isContactStatus(row.status) ? row.status : row.is_assigned === true ? "go" : "called";
     const str = (v: unknown) => (typeof v === "string" ? v.trim() || null : null);
     const quote_amount = typeof row.quote_amount === "number" && !Number.isNaN(row.quote_amount) ? row.quote_amount : null;
     const vendor_id = typeof row.vendor_id === "string" && /^[0-9a-f-]{36}$/i.test(row.vendor_id) ? row.vendor_id : null;
@@ -275,7 +281,8 @@ export function contactedVendorsFromForm(formData: FormData): ContactedVendorRow
       notes: str(row.notes),
       vendor_tier: str(row.vendor_tier),
       tl_approved_by: str(row.tl_approved_by),
-      is_assigned: row.is_assigned === true,
+      status,
+      is_assigned: status === "go",
     });
   }
   return rows;
