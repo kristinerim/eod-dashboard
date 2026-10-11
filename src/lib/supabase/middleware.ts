@@ -25,9 +25,11 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Checked against the project's signing key locally, so signed-in requests
+  // don't each wait on a round trip to Supabase. Expired sessions are still
+  // refreshed here.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims?.sub ? { id: data.claims.sub } : null;
 
   const isLoginPage = request.nextUrl.pathname.startsWith("/login");
   // The customer signing link is deliberately public — no account, no login.

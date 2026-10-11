@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { getCurrentProfile, isSupervisor } from "@/lib/profile";
 import { dateInPHT, todayISO, weekRangeFor } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
@@ -42,9 +42,7 @@ function groupByDate(entries: TimeEntry[]) {
 
 export default async function HoursPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) return null;
 
   const profile = await getCurrentProfile();

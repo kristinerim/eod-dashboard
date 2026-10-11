@@ -2,9 +2,9 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import ElapsedBadge from "@/components/ElapsedBadge";
-import { fetchAllRows } from "@/lib/supabase/paginate";
 
 const STATUS = "Service Rendered – Pending Completion";
+const PAGE_SIZE = 50;
 
 interface PendingJob {
   id: string;
@@ -19,23 +19,29 @@ interface PendingJob {
   pending_completion_substatus: string | null;
 }
 
-export default async function PendingCompletionPage() {
+export default async function PendingCompletionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}) {
+  const raw = (await searchParams).page;
+  const page = Math.max(1, Math.floor(Number(Array.isArray(raw) ? raw[0] : raw)) || 1);
+  const from = (page - 1) * PAGE_SIZE;
   const supabase = await createClient();
 
-  const pendingJobs = await fetchAllRows<PendingJob>(() =>
-    supabase
-      .from("jobs")
-      .select(
-        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, pending_completion_at, pending_completion_substatus"
-      )
-      .eq("job_status", STATUS)
-  );
-
-  const sorted = [...pendingJobs].sort((a, b) => {
-    const aTime = a.pending_completion_at ? new Date(a.pending_completion_at).getTime() : 0;
-    const bTime = b.pending_completion_at ? new Date(b.pending_completion_at).getTime() : 0;
-    return aTime - bTime;
-  });
+  // One page at a time, oldest first, with the total counted by the database.
+  const { data, count } = await supabase
+    .from("jobs")
+    .select(
+      "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, pending_completion_at, pending_completion_substatus",
+      { count: "exact" }
+    )
+    .eq("job_status", STATUS)
+    .order("pending_completion_at", { ascending: true, nullsFirst: true })
+    .range(from, from + PAGE_SIZE - 1);
+  const sorted = (data ?? []) as PendingJob[];
+  const total = count ?? sorted.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div className="space-y-4">
@@ -43,7 +49,11 @@ export default async function PendingCompletionPage() {
       <h1 className="text-lg font-semibold">Service Rendered – Pending Completion</h1>
       <p className="text-sm text-black/60">
         Every job currently in this status, oldest first. A job leaves this list as soon as its
-        status changes to Completed or anything else.
+        status changes to Completed or anything else.{" "}
+        <span className="font-medium text-black/80">
+          {total.toLocaleString("en-US")} job{total === 1 ? "" : "s"}
+          {totalPages > 1 && ` — page ${page} of ${totalPages}`}
+        </span>
       </p>
 
       {sorted.length === 0 ? (
@@ -92,6 +102,25 @@ export default async function PendingCompletionPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between text-sm">
+          {page > 1 ? (
+            <Link href={page === 2 ? "/pending-completion" : `/pending-completion?page=${page - 1}`} className="underline">
+              ← Previous
+            </Link>
+          ) : (
+            <span />
+          )}
+          {page < totalPages ? (
+            <Link href={`/pending-completion?page=${page + 1}`} className="underline">
+              Next →
+            </Link>
+          ) : (
+            <span />
+          )}
         </div>
       )}
     </div>

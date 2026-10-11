@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
+import { cache } from "react";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { TEAM_MEMBERS } from "@/lib/constants";
 
 export { type Role, ALL_ROLES, isFullAdmin, isSupervisor } from "@/lib/roles";
@@ -9,12 +10,11 @@ export interface Profile {
   agent_name: string | null;
 }
 
-export async function getCurrentProfile(): Promise<Profile | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+// Shared across the layout, the page and any helper within one request.
+export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
+  const user = await getCurrentUser();
   if (!user) return null;
+  const supabase = await createClient();
 
   const { data } = await supabase
     .from("profiles")
@@ -23,7 +23,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     .single();
 
   return (data as Profile | null) ?? null;
-}
+});
 
 export async function requireFullAdmin(): Promise<
   { ok: true; userId: string } | { ok: false; error: string }

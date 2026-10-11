@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { getCurrentProfile, isFullAdmin } from "@/lib/profile";
 import ClockInPrompt from "@/components/ClockInPrompt";
 import { signOut } from "./actions";
@@ -10,21 +10,16 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const profile = await getCurrentProfile();
+  const user = await getCurrentUser();
 
-  let hasOpenEntry = true;
-  if (user) {
-    const { data: openEntry } = await supabase
-      .from("time_entries")
-      .select("id")
-      .eq("user_id", user.id)
-      .is("clock_out", null)
-      .maybeSingle();
-    hasOpenEntry = !!openEntry;
-  }
+  // The profile and the open-clock-in lookup don't depend on each other.
+  const [profile, openEntryResult] = await Promise.all([
+    getCurrentProfile(),
+    user
+      ? supabase.from("time_entries").select("id").eq("user_id", user.id).is("clock_out", null).maybeSingle()
+      : Promise.resolve(null),
+  ]);
+  const hasOpenEntry = user ? !!openEntryResult?.data : true;
 
   return (
     <div className="flex flex-1 flex-col">

@@ -3,13 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import {
   isEtaTrackedJob,
   isNeedsAttentionStatus,
-  isOpenJobStatus,
   monthRangeFor,
   needsRefund,
-  summarizeJobs,
   todayISO,
   weekRangeFor,
-  type JobSummaryInput,
 } from "@/lib/aggregate";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import DispatchedList, { type DispatchedJob } from "@/components/DispatchedList";
@@ -32,8 +29,14 @@ function formatDate(d: string) {
   });
 }
 
-interface JobRow extends JobSummaryInput {
+// One row per report from the report_job_summaries() database function.
+interface ReportSummary {
   report_id: string;
+  job_count: number;
+  total_profit: number;
+  total_job_amount: number;
+  total_vendor_fee: number;
+  open_count: number;
 }
 
 function Card({ label, value }: { label: string; value: string | number }) {
@@ -49,13 +52,48 @@ export default async function DashboardPage() {
   await rolloverStaleAppointments();
 
   const supabase = await createClient();
-  const { data: reports, error } = await supabase
-    .from("reports")
-    .select("id, report_date")
-    .order("report_date", { ascending: false });
 
-  if (error) {
-    return <p className="text-sm text-red-600">Failed to load reports: {error.message}</p>;
+  // All of this runs at the same time, and none of it downloads the whole jobs
+  // table: per-report totals are computed in the database, and the three lists
+  // (dispatched, needs attention, refunds owed) are filtered there too. The JS
+  // checks after each fetch are kept so what shows up is exactly what did before.
+  const [reportsRes, summariesRes, dispatchedData, needsAttentionData, cancelledData] = await Promise.all([
+    supabase.from("reports").select("id, report_date").order("report_date", { ascending: false }),
+    supabase.rpc("report_job_summaries"),
+    fetchAllRows<DispatchedJob>(() =>
+      supabase
+        .from("jobs")
+        .select(
+          "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, time_dispatched, eta_minutes"
+        )
+        .not("eta_minutes", "is", null)
+        .not("time_dispatched", "is", null)
+        .or("job_status.is.null,job_status.not.in.(Completed,Cancelled)")
+    ),
+    fetchAllRows<NeedsAttentionJob & { job_status: string | null }>(() =>
+      supabase
+        .from("jobs")
+        .select("id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status")
+        .ilike("job_status", "needs attention")
+    ),
+    fetchAllRows<RefundRequiredJob & { job_status: string | null; customer_charged_via: string | null }>(() =>
+      supabase
+        .from("jobs")
+        .select(
+          "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_amount, refunded_to_client, cancellation_reason, job_status, customer_charged_via"
+        )
+        .eq("job_status", "Cancelled")
+        .gt("job_amount", 0)
+        .not("customer_charged_via", "is", null)
+    ),
+  ]);
+
+  const reports = reportsRes.data;
+  if (reportsRes.error) {
+    return <p className="text-sm text-red-600">Failed to load reports: {reportsRes.error.message}</p>;
+  }
+  if (summariesRes.error) {
+    return <p className="text-sm text-red-600">Failed to load report totals: {summariesRes.error.message}</p>;
   }
 
   if (!reports || reports.length === 0) {
@@ -72,73 +110,45 @@ export default async function DashboardPage() {
     );
   }
 
-  const reportIds = reports.map((r) => r.id);
-  const jobs = await fetchAllRows<JobRow>(() =>
-    supabase
-      .from("jobs")
-      .select("report_id, profit, job_amount, vendors_fee, job_status, customer_charged_via")
-      .in("report_id", reportIds)
-  );
-
-  const jobsByReport = new Map<string, JobRow[]>();
-  for (const j of jobs) {
-    const list = jobsByReport.get(j.report_id) ?? [];
-    list.push(j);
-    jobsByReport.set(j.report_id, list);
+  const summaryByReport = new Map<string, ReportSummary>();
+  for (const r of (summariesRes.data ?? []) as ReportSummary[]) {
+    summaryByReport.set(r.report_id, {
+      report_id: r.report_id,
+      job_count: Number(r.job_count),
+      total_profit: Number(r.total_profit),
+      total_job_amount: Number(r.total_job_amount),
+      total_vendor_fee: Number(r.total_vendor_fee),
+      open_count: Number(r.open_count),
+    });
   }
+  const totalsFor = (ids: string[]) => {
+    const t = { profit: 0, jobs: 0, amount: 0, vendorFee: 0, open: 0 };
+    for (const id of ids) {
+      const s = summaryByReport.get(id);
+      if (!s) continue;
+      t.profit += s.total_profit;
+      t.jobs += s.job_count;
+      t.amount += s.total_job_amount;
+      t.vendorFee += s.total_vendor_fee;
+      t.open += s.open_count;
+    }
+    return t;
+  };
 
   const today = todayISO();
   const { start: weekStart, end: weekEnd } = weekRangeFor(today);
-  const weekReportIds = reports
-    .filter((r) => r.report_date >= weekStart && r.report_date <= weekEnd)
-    .map((r) => r.id);
-  const weekJobs = weekReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
-
-  const todayReportIds = reports.filter((r) => r.report_date === today).map((r) => r.id);
-  const todayJobs = todayReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
-  const todaySummary = summarizeJobs(todayJobs);
-
   const { start: monthStart, end: monthEnd } = monthRangeFor(today);
-  const monthReportIds = reports
-    .filter((r) => r.report_date >= monthStart && r.report_date <= monthEnd)
-    .map((r) => r.id);
-  const monthJobs = monthReportIds.flatMap((id) => jobsByReport.get(id) ?? []);
+  const idsBetween = (start: string, end: string) =>
+    reports.filter((r) => r.report_date >= start && r.report_date <= end).map((r) => r.id);
 
-  const incompleteToday = todayJobs.filter((j) => isOpenJobStatus(j.job_status)).length;
-  const incompleteWeek = weekJobs.filter((j) => isOpenJobStatus(j.job_status)).length;
-  const incompleteMonth = monthJobs.filter((j) => isOpenJobStatus(j.job_status)).length;
+  const todayTotals = totalsFor(reports.filter((r) => r.report_date === today).map((r) => r.id));
+  const incompleteToday = todayTotals.open;
+  const incompleteWeek = totalsFor(idsBetween(weekStart, weekEnd)).open;
+  const incompleteMonth = totalsFor(idsBetween(monthStart, monthEnd)).open;
 
-  const dispatchedData = await fetchAllRows<DispatchedJob>(() =>
-    supabase
-      .from("jobs")
-      .select(
-        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status, time_dispatched, eta_minutes"
-      )
-      .in("report_id", reportIds)
-      .not("eta_minutes", "is", null)
-  );
   const dispatchedJobs: DispatchedJob[] = dispatchedData.filter((j) => isEtaTrackedJob(j));
-
-  const needsAttentionData = await fetchAllRows<NeedsAttentionJob & { job_status: string | null }>(() =>
-    supabase
-      .from("jobs")
-      .select("id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_status")
-      .in("report_id", reportIds)
-  );
   const needsAttentionJobs: NeedsAttentionJob[] = needsAttentionData.filter((j) =>
     isNeedsAttentionStatus(j.job_status)
-  );
-
-  const cancelledData = await fetchAllRows<
-    RefundRequiredJob & { job_status: string | null; customer_charged_via: string | null }
-  >(() =>
-    supabase
-      .from("jobs")
-      .select(
-        "id, report_id, agent, dispatcher, job_number, vendor_name, state, customer_phone, job_amount, refunded_to_client, cancellation_reason, job_status, customer_charged_via"
-      )
-      .in("report_id", reportIds)
-      .eq("job_status", "Cancelled")
   );
   const refundRequiredJobs: RefundRequiredJob[] = cancelledData.filter((j) => needsRefund(j));
 
@@ -157,10 +167,10 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card label="Profit" value={formatCurrency(todaySummary.totalProfit)} />
-        <Card label="Jobs" value={todaySummary.jobCount} />
-        <Card label="Job amount" value={formatCurrency(todaySummary.totalJobAmount)} />
-        <Card label="Vendor payment" value={formatCurrency(todaySummary.totalVendorFee)} />
+        <Card label="Profit" value={formatCurrency(todayTotals.profit)} />
+        <Card label="Jobs" value={todayTotals.jobs} />
+        <Card label="Job amount" value={formatCurrency(todayTotals.amount)} />
+        <Card label="Vendor payment" value={formatCurrency(todayTotals.vendorFee)} />
       </div>
 
       <RefundRequiredList jobs={refundRequiredJobs} />
@@ -206,9 +216,9 @@ export default async function DashboardPage() {
             </thead>
             <tbody>
               {reports
-                .filter((r) => (jobsByReport.get(r.id) ?? []).length > 0)
+                .filter((r) => (summaryByReport.get(r.id)?.job_count ?? 0) > 0)
                 .map((r) => {
-                  const s = summarizeJobs(jobsByReport.get(r.id) ?? []);
+                  const s = summaryByReport.get(r.id)!;
                   return (
                     <tr key={r.id} className="border-t border-black/10 hover:bg-black/[0.03]">
                       <td className="px-4 py-2">
@@ -221,8 +231,8 @@ export default async function DashboardPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-2">{formatCurrency(s.totalProfit)}</td>
-                      <td className="px-4 py-2">{s.jobCount}</td>
+                      <td className="px-4 py-2">{formatCurrency(s.total_profit)}</td>
+                      <td className="px-4 py-2">{s.job_count}</td>
                     </tr>
                   );
                 })}

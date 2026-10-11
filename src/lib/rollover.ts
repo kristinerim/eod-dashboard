@@ -1,7 +1,13 @@
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { todayISO } from "@/lib/aggregate";
 import { fetchAllRows } from "@/lib/supabase/paginate";
+
+// Remembered per server instance: once checked for today, don't re-check on
+// every page load. Appointments only go stale at midnight (or if someone moves
+// an old day's job back to Appointment), so a few minutes' delay is harmless.
+const CHECK_EVERY_MS = 5 * 60 * 1000;
+let lastCheck = { date: "", at: 0 };
 
 /**
  * A job in Appointment status isn't operational yet — dispatch is what makes
@@ -14,29 +20,35 @@ import { fetchAllRows } from "@/lib/supabase/paginate";
  * on a schedule — there's no background cron here.
  */
 export async function rolloverStaleAppointments(): Promise<void> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return;
+  const today = todayISO();
+  if (lastCheck.date === today && Date.now() - lastCheck.at < CHECK_EVERY_MS) return;
 
   const admin = createAdminClient();
-  const today = todayISO();
 
-  const { data: pastReports } = await admin.from("reports").select("id").lt("report_date", today);
-  const pastReportIds = (pastReports ?? []).map((r) => r.id);
-  if (pastReportIds.length === 0) return;
-
-  const staleJobs = await fetchAllRows<{ id: string; report_id: string }>(() =>
+  // Appointment jobs are few, so look for them first: the common case (nothing
+  // to move) then costs one small query instead of listing every past report.
+  const appointments = await fetchAllRows<{ id: string; report_id: string }>(() =>
     admin
       .from("jobs")
       .select("id, report_id")
       .eq("job_status", "Appointment")
-      .in("report_id", pastReportIds)
       .order("row_number", { ascending: true })
   );
 
-  if (staleJobs.length === 0) return;
+  let staleJobs: { id: string; report_id: string }[] = [];
+  if (appointments.length > 0) {
+    const { data: pastReports } = await admin.from("reports").select("id").lt("report_date", today);
+    const pastReportIds = new Set((pastReports ?? []).map((r) => r.id));
+    staleJobs = appointments.filter((j) => pastReportIds.has(j.report_id));
+  }
+
+  if (staleJobs.length === 0) {
+    lastCheck = { date: today, at: Date.now() };
+    return;
+  }
+
+  const user = await getCurrentUser();
+  if (!user) return;
 
   const { data: todayReport, error: todayReportError } = await admin
     .from("reports")
@@ -60,4 +72,6 @@ export async function rolloverStaleAppointments(): Promise<void> {
       .eq("id", job.id);
     nextRowNumber += 1;
   }
+  lastCheck = { date: today, at: Date.now() };
 }
+

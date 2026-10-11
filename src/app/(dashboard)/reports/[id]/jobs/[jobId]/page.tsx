@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { getCurrentProfile, getAgentNameOptions, isSupervisor, isFullAdmin } from "@/lib/profile";
 import { needsRefund } from "@/lib/aggregate";
 import type { Job } from "../../JobsTable";
@@ -64,9 +64,7 @@ export default async function JobDetailPage({
   const profile = await getCurrentProfile();
   const canDelete = isSupervisor(profile?.role);
   const agentOptions = await getAgentNameOptions();
-  const {
-    data: { user: currentUser },
-  } = await supabase.auth.getUser();
+  const currentUser = await getCurrentUser();
 
   let leadLink: { id: string; leadNumber: string } | null = null;
   if (job.lead_id) {

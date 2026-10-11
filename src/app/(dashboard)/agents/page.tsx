@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCurrentProfile, isFullAdmin } from "@/lib/profile";
 import { ROLE_LABELS } from "@/lib/constants";
@@ -18,9 +18,7 @@ export default async function AgentsPage() {
   }
 
   const supabase = await createClient();
-  const {
-    data: { user: currentUser },
-  } = await supabase.auth.getUser();
+  const currentUser = await getCurrentUser();
 
   const { data: users } = await supabase
     .from("profiles")

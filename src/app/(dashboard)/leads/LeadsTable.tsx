@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import LeadForm from "./LeadForm";
 import { QUOTE_STATUS_LABELS } from "@/lib/constants";
@@ -67,45 +67,14 @@ export default function LeadsTable({
   currentAgentName?: string | null;
 }) {
   const canEditLead = (lead: Lead) => currentRole !== "agent" || lead.agent === currentAgentName;
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"" | Lead["status"]>("");
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return leads.filter((l) => {
-      if (statusFilter && l.status !== statusFilter) return false;
-      if (!q) return true;
-      return [l.lead_number, l.agent, l.customer_name, l.customer_phone, l.notes, l.job_type, l.year_make_model].some((f) =>
-        String(f ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [leads, search, statusFilter]);
+  // Searching, status filtering, and paging happen on the server (see
+  // leads/page.tsx) — this table only ever receives the current page.
+  const filtered = leads;
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search lead #, agent, customer, phone..."
-          className="w-64 rounded border border-black/20 px-3 py-1.5 text-sm"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as "" | Lead["status"])}
-          className="rounded border border-black/20 px-2 py-1.5 text-sm"
-        >
-          <option value="">All statuses</option>
-          <option value="open">Open</option>
-          <option value="converted">Converted</option>
-          <option value="lost">Lost</option>
-        </select>
-        <span className="self-center text-xs text-black/50">
-          {filtered.length} of {leads.length}
-        </span>
-      </div>
-
       <div className="overflow-x-auto rounded-lg border border-black/10">
         <table className="w-full min-w-max text-sm">
           <thead className="bg-black/5 text-left">

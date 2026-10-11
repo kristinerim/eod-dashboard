@@ -1265,3 +1265,9 @@ end $$;
 update job_contacted_vendors set status = 'go' where is_assigned and status = 'called';
 
 alter table jobs add column if not exists vendor_phone text;
+
+-- Speed: indexes for the Completed / Cancelled / DPA lists
+-- these let the database find each page's rows without scanning every job.
+create index if not exists jobs_status_completed_at_idx on jobs(job_status, completed_at desc);
+create index if not exists jobs_status_cancelled_at_idx on jobs(job_status, cancelled_at desc);
+create index if not exists jobs_status_pending_at_idx on jobs(job_status, pending_completion_at);
