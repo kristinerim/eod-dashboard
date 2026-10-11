@@ -24,7 +24,7 @@ import {
 import { findOrCreateLeadForJob } from "@/lib/leadMatching";
 import { numberOrNull } from "@/lib/formParse";
 
-type ActionResult = { success: true; id?: string } | { error: string };
+type ActionResult = { success: true; id?: string; reportId?: string } | { error: string };
 
 // Basic structure for now (per the plan, ahead of the Vendor Map integration):
 // replace the job's whole contacted-vendors row set with whatever was
@@ -180,6 +180,23 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     targetReportId = resolved.id;
   }
 
+  // A job created from a specific lead converts that lead. The lead is claimed
+  // first, in one conditional update, so the same lead can never produce two
+  // jobs (a double click, or two windows): only one request finds it still open.
+  const explicitLeadId = strOrNull(formData.get("selected_lead_id"));
+  if (explicitLeadId) {
+    const { data: claimed, error: claimError } = await supabase
+      .from("leads")
+      .update({ status: "converted", converted_at: new Date().toISOString(), quote_status: "accepted" })
+      .eq("id", explicitLeadId)
+      .eq("status", "open")
+      .select("id");
+    if (claimError) return { error: claimError.message };
+    if (!claimed || claimed.length === 0) {
+      return { error: "This lead has already been converted to a job, or it was closed." };
+    }
+  }
+
   const { count } = await supabase
     .from("jobs")
     .select("id", { count: "exact", head: true })
@@ -202,7 +219,13 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     .select("id")
     .single();
 
-  if (error) return { error: error.message };
+  if (error || !inserted) {
+    // The job wasn't created, so give the lead back.
+    if (explicitLeadId) {
+      await supabase.from("leads").update({ status: "open", converted_at: null }).eq("id", explicitLeadId);
+    }
+    return { error: error?.message ?? "Failed to create the job." };
+  }
 
   if (inserted?.id) {
     const vendorsError = await syncContactedVendors(supabase, inserted.id, formData);
@@ -212,10 +235,9 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
     // picked in the Client Details "load from an existing lead" selector, or
     // (if none was picked) whichever lead matches this job's phone/email/
     // name, creating one if nothing matches. This is the only place jobs get
-    // created outside convertLeadToJob (which already sets lead_id directly
-    // since it's converting a specific, known lead) — if a new job-creation
+    // created (a lead being converted arrives here with selected_lead_id, which
+    // is claimed above) — if a new job-creation
     // path is ever added elsewhere, it must call findOrCreateLeadForJob too.
-    const explicitLeadId = strOrNull(formData.get("selected_lead_id"));
     const leadResult = explicitLeadId
       ? { leadId: explicitLeadId }
       : await findOrCreateLeadForJob(supabase, {
@@ -228,6 +250,10 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
           jobId: inserted.id,
           jobTimeConverted: fields.time_converted,
         });
+    if (explicitLeadId) {
+      const { error: leadLinkError } = await supabase.from("leads").update({ job_id: inserted.id }).eq("id", explicitLeadId);
+      if (leadLinkError) console.error(`Failed to link lead ${explicitLeadId} to job ${inserted.id}:`, leadLinkError.message);
+    }
     if ("leadId" in leadResult) {
       const { error: linkError } = await supabase
         .from("jobs")
@@ -241,8 +267,9 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
 
   revalidatePath(`/reports/${targetReportId}`);
   if (targetReportId !== reportId) revalidatePath(`/reports/${reportId}`);
+  revalidatePath("/leads");
   revalidatePath("/");
-  return { success: true, id: inserted?.id };
+  return { success: true, id: inserted?.id, reportId: targetReportId };
 }
 
 type JobContext =

@@ -2,25 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { dateInPHT } from "@/lib/aggregate";
+import { todayISO } from "@/lib/aggregate";
 import { getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profile";
 import { LEAD_DISPOSITIONS, QUOTE_STATUSES, type QuoteStatus } from "@/lib/constants";
 import { intakeFieldsFromForm } from "@/lib/intake";
 import { normalizeEmail, normalizeName, normalizePhone } from "@/lib/leadMatching";
 import { numberOrNull } from "@/lib/formParse";
-import {
-  jobFieldsFromForm,
-  strOrNull,
-  upsertReportForDate,
-  validateCoreRequiredFields,
-  validateNewJobRequiredFields,
-  validatePendingCompletionSubstatus,
-  validateTimeDispatchedRequired,
-  validateUniqueJobNumber,
-  isCancelledJobStatus,
-  isCompletedJobStatus,
-  isPendingCompletionStatus,
-} from "../reports/[id]/job-fields";
+import { strOrNull, upsertReportForDate } from "../reports/[id]/job-fields";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -214,13 +202,18 @@ export async function deleteLead(leadId: string): Promise<ActionResult> {
   return { success: true };
 }
 
-type ConvertResult = { success: true; reportId: string; jobId: string } | { error: string };
+export type StartConversionResult =
+  | { success: true; lead: Record<string, unknown>; reportId: string }
+  // The lead was already converted (a second click, or another window): go to its job.
+  | { existing: { reportId: string; jobId: string } }
+  | { error: string };
 
-// Runs a Lead through the exact same required-field / uniqueness / dispatch
-// validation as creating a Job directly (see job-fields.ts), then carries the
-// Lead's customer/agent info onto the new Job and links the two records both
-// ways so the full inquiry-to-job history stays intact.
-export async function convertLeadToJob(leadId: string, formData: FormData): Promise<ConvertResult> {
+// "Customer Accepted / Convert to Job": the form has already saved the lead.
+// This hands back the saved lead and the report the new job will start on, so
+// the Add Job form can open pre-filled. No job exists yet — it's created when
+// the agent saves that form, which is also when the lead becomes Converted and
+// is linked to the job (see createJob).
+export async function startLeadConversion(leadId: string): Promise<StartConversionResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -230,76 +223,18 @@ export async function convertLeadToJob(leadId: string, formData: FormData): Prom
   const check = await requireLead(supabase, leadId);
   if (!check.ok) return { error: check.error };
   const lead = check.lead;
-  if (lead.status !== "open") return { error: "This lead has already been converted or closed." };
 
-  const fields = jobFieldsFromForm(formData);
+  if (lead.status === "converted" && lead.job_id) {
+    const { data: job } = await supabase.from("jobs").select("report_id").eq("id", lead.job_id).single();
+    if (job) return { existing: { reportId: job.report_id, jobId: lead.job_id } };
+  }
+  if (lead.status !== "open") return { error: "This lead is closed. Reopen it before converting it to a job." };
 
-  const coreError = validateCoreRequiredFields(fields);
-  if (coreError) return { error: coreError };
-
-  const newJobError = validateNewJobRequiredFields(fields);
-  if (newJobError) return { error: newJobError };
-
-  const duplicateJobNumberError = await validateUniqueJobNumber(supabase, fields.job_number);
-  if (duplicateJobNumberError) return { error: duplicateJobNumberError };
-
-  const timeDispatchedError = validateTimeDispatchedRequired(fields.job_status, fields.time_dispatched);
-  if (timeDispatchedError) return { error: timeDispatchedError };
-
-  const substatusError = validatePendingCompletionSubstatus(
-    fields.job_status,
-    fields.pending_completion_substatus
-  );
-  if (substatusError) return { error: substatusError };
-
-  const permissionError = await requireLeadPermission(fields.agent);
+  const permissionError = await requireLeadPermission(lead.agent);
   if (permissionError) return { error: permissionError };
 
-  const reportDate = fields.time_dispatched ? dateInPHT(fields.time_dispatched) : dateInPHT(new Date().toISOString());
-  const resolvedReport = await upsertReportForDate(supabase, user.id, reportDate);
-  if ("error" in resolvedReport) return { error: resolvedReport.error };
-  const targetReportId = resolvedReport.id;
+  const resolved = await upsertReportForDate(supabase, user.id, todayISO());
+  if ("error" in resolved) return { error: resolved.error };
 
-  const { count } = await supabase
-    .from("jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("report_id", targetReportId);
-
-  // lead_id is set directly here (not via findOrCreateLeadForJob) since this
-  // job is explicitly being converted from a specific, already-known lead —
-  // no matching needed, and it can't create a duplicate.
-  const { data: inserted, error } = await supabase
-    .from("jobs")
-    .insert({
-      ...fields,
-      report_id: targetReportId,
-      row_number: (count ?? 0) + 1,
-      source: "manual",
-      created_by: user.id,
-      lead_id: leadId,
-      pending_completion_at: isPendingCompletionStatus(fields.job_status) ? new Date().toISOString() : null,
-      completed_at: isCompletedJobStatus(fields.job_status) ? new Date().toISOString() : null,
-      cancelled_at: isCancelledJobStatus(fields.job_status) ? new Date().toISOString() : null,
-    })
-    .select("id")
-    .single();
-
-  if (error || !inserted) return { error: error?.message ?? "Failed to create the job." };
-
-  const { error: leadUpdateError } = await supabase
-    .from("leads")
-    .update({
-      status: "converted",
-      job_id: inserted.id,
-      converted_at: new Date().toISOString(),
-      quote_status: "accepted",
-    })
-    .eq("id", leadId);
-  if (leadUpdateError) return { error: leadUpdateError.message };
-
-  revalidateLeads(leadId);
-  revalidatePath(`/reports/${targetReportId}`);
-  revalidatePath("/");
-
-  return { success: true, reportId: targetReportId, jobId: inserted.id };
+  return { success: true, lead, reportId: resolved.id };
 }

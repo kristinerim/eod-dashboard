@@ -334,16 +334,24 @@ export function LocationStep({
   );
 }
 
-// 3. Vehicle Information --------------------------------------------------
+// 3. Vehicle Information (with the service-specific details) -------------
 
-export function VehicleStep({ values, jobType }: { values: Values; jobType: string }) {
-  return <DynamicFieldGrid keys={stepFieldKeys("vehicle", jobType)} values={values} jobType={jobType} />;
-}
-
-// 4. Service Details ------------------------------------------------------
-
-export function DetailsStep({ values, jobType }: { values: Values; jobType: string }) {
-  return <DynamicFieldGrid keys={stepFieldKeys("details", jobType)} values={values} jobType={jobType} />;
+export function VehicleStep({ values, jobType, formRef }: { values: Values; jobType: string; formRef: FormRef }) {
+  const detailKeys = stepFieldKeys("details", jobType);
+  return (
+    <div className="space-y-4">
+      <DynamicFieldGrid keys={stepFieldKeys("vehicle", jobType)} values={values} jobType={jobType} formRef={formRef} />
+      {detailKeys.length > 0 && (
+        <div className="space-y-3 border-t border-black/10 pt-4">
+          <header>
+            <h4 className="text-sm font-semibold text-black/80">Service details</h4>
+            <p className="text-xs italic text-black/50">&ldquo;Can you tell me what&apos;s going on with the vehicle?&rdquo;</p>
+          </header>
+          <DynamicFieldGrid keys={detailKeys} values={values} jobType={jobType} formRef={formRef} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // 5. Customer Information -------------------------------------------------

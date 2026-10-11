@@ -2,18 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  TEAM_MEMBERS,
-  PLATFORMS,
-  PAYMENT_AUTH_STATUSES,
-  JOB_STATUS_SUGGESTIONS,
-  PENDING_COMPLETION_STATUS,
-  PENDING_COMPLETION_SUBSTATUSES,
-  QUOTE_STATUS_LABELS,
-  type QuoteStatus,
-} from "@/lib/constants";
+import { TEAM_MEMBERS, QUOTE_STATUS_LABELS, type QuoteStatus } from "@/lib/constants";
 import { INTAKE_STEPS, buildIntakeSummary, intakeInitialFromRecord, type IntakeStepId } from "@/lib/intake";
-import { saveLead, convertLeadToJob, type SaveLeadIntent } from "./lead-actions";
+import { saveLead, startLeadConversion, type SaveLeadIntent } from "./lead-actions";
+import JobForm, { type OpenLead } from "../reports/[id]/JobForm";
 import type { Lead } from "./LeadsTable";
 import IntakeShell, { StepPanel } from "../intake/IntakeShell";
 import { useFormSnapshot } from "../intake/useFormSnapshot";
@@ -25,18 +17,10 @@ import {
   ServiceStep,
   LocationStep,
   VehicleStep,
-  DetailsStep,
   CustomerStep,
   QuoteStep,
   inputCls,
 } from "../intake/IntakePanels";
-
-// datetime-local inputs work in wall-clock time with no timezone; the team
-// works in Philippine Time (mirrors reports/[id]/JobForm.tsx's helper).
-function isoToDatetimeLocalPHT(iso: string): string {
-  const shifted = new Date(new Date(iso).getTime() + 8 * 60 * 60 * 1000);
-  return shifted.toISOString().slice(0, 16);
-}
 
 interface Props {
   lead?: Lead;
@@ -84,29 +68,20 @@ export default function LeadForm({
   const [active, setActive] = useState<IntakeStepId>(startAtConvert ? "convert" : "service");
   const [error, setError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
-  const [jobAmountEdited, setJobAmountEdited] = useState(false);
-  const [jobAmountValue, setJobAmountValue] = useState("");
-  const [timeConvertedDefault] = useState(() => isoToDatetimeLocalPHT(new Date().toISOString()));
+  // Set once the customer has accepted: the form hands over to Add Job.
+  const [converting, setConverting] = useState<{ lead: OpenLead; reportId: string } | null>(null);
 
   const { formRef, snapshot, formHandlers } = useFormSnapshot({ ...initial, quote_status: quoteStatus });
   const jobType = snapshot.job_type ?? initial.job_type ?? "";
-  const accepted = quoteStatus === "accepted";
 
   const steps = INTAKE_STEPS;
-
-  // The job amount defaults to whatever was quoted, but stays editable.
-  const quoteTotal = (Number(snapshot.quoted_price) || 0) + (Number(snapshot.additional_charges) || 0);
-  const jobAmount = jobAmountEdited ? jobAmountValue : quoteTotal ? String(quoteTotal) : "";
-  const vendorCost = Number(snapshot.vendors_fee) || Number(snapshot.quoted_service_amount) || 0;
-  const estimatedProfit = vendorCost ? (Number(jobAmount) || 0) - vendorCost : null;
 
   const summary = buildIntakeSummary({ ...snapshot, quote_status: quoteStatus }, "lead");
 
   const completed: Partial<Record<IntakeStepId, boolean>> = {
     service: !!snapshot.job_type,
     location: !!(snapshot.service_street_address || snapshot.service_city),
-    vehicle: !!(snapshot.vehicle_make || snapshot.vehicle_model || snapshot.vehicle_year),
-    details: !!snapshot.issue,
+    vehicle: !!(snapshot.vehicle_make || snapshot.vehicle_model || snapshot.vehicle_year || snapshot.issue),
     customer: !!(snapshot.customer_name && snapshot.customer_phone),
     quote: !!snapshot.quoted_price,
     convert: false,
@@ -147,6 +122,9 @@ export default function LeadForm({
     setError(message);
   }
 
+  // "Customer Accepted / Convert to Job": save the lead, then open Add Job with
+  // everything collected so far already filled in. The job itself is created
+  // when the agent saves that form.
   function handleConvert() {
     setError(null);
     setSavedNote(null);
@@ -157,9 +135,6 @@ export default function LeadForm({
 
     if (!text("agent")) return jump("service", "Select the agent for this lead.");
     if (!text("customer_name")) return jump("customer", "Enter the customer name before converting.");
-    if (!text("job_number")) return jump("convert", "Enter the job number.");
-    if (!text("job_amount")) return jump("convert", "Enter the job amount.");
-    if (!text("time_converted")) return jump("convert", "Enter the time converted.");
 
     startTransition(async () => {
       const saved = await saveLead(leadId, formData, "accepted");
@@ -169,17 +144,36 @@ export default function LeadForm({
       }
       setLeadId(saved.id);
       setLeadNumber(saved.leadNumber);
+      setQuoteStatus("accepted");
 
-      const converted = await convertLeadToJob(saved.id, formData);
-      if ("error" in converted) {
-        setError(converted.error);
+      const started = await startLeadConversion(saved.id);
+      if ("error" in started) {
+        setError(started.error);
         return;
       }
-      router.push(`/reports/${converted.reportId}/jobs/${converted.jobId}`);
+      if ("existing" in started) {
+        // Already converted (a second click or another window): go to its job.
+        router.push(`/reports/${started.existing.reportId}/jobs/${started.existing.jobId}`);
+        return;
+      }
+      setConverting({ lead: started.lead as OpenLead, reportId: started.reportId });
     });
   }
 
   const stepDef = (id: IntakeStepId) => INTAKE_STEPS.find((s) => s.id === id)!;
+
+  if (converting) {
+    return (
+      <JobForm
+        reportId={converting.reportId}
+        convertingFrom={converting.lead}
+        onClose={onClose}
+        agentOptions={agentOptions}
+        currentRole={currentRole}
+        currentAgentName={currentAgentName}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -248,10 +242,7 @@ export default function LeadForm({
               <LocationStep values={initial} formRef={formRef} jobType={jobType} snapshot={snapshot} />
             </StepPanel>
             <StepPanel step={stepDef("vehicle")} active={active}>
-              <VehicleStep values={initial} jobType={jobType} />
-            </StepPanel>
-            <StepPanel step={stepDef("details")} active={active}>
-              <DetailsStep values={initial} jobType={jobType} />
+              <VehicleStep values={initial} jobType={jobType} formRef={formRef} />
             </StepPanel>
             <StepPanel step={stepDef("customer")} active={active}>
               <CustomerStep values={initial} formRef={formRef} excludeLeadId={lead?.id}>
@@ -295,114 +286,27 @@ export default function LeadForm({
                   </button>
                   <button
                     type="button"
-                    onClick={() => submit("accepted", "convert-step")}
+                    onClick={handleConvert}
                     disabled={isPending}
                     className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                   >
-                    Customer Accepted
+                    {isPending ? "Opening Add Job..." : "Customer Accepted / Convert to Job"}
                   </button>
                 </div>
               </QuoteStep>
             </StepPanel>
 
             <StepPanel step={stepDef("convert")} active={active}>
-              {!accepted && (
-                <div className="space-y-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm">
-                  <p>Booking opens once the customer accepts the quote.</p>
-                  <button
-                    type="button"
-                    onClick={() => submit("accepted", "convert-step")}
-                    disabled={isPending}
-                    className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-                  >
-                    Customer Accepted
-                  </button>
-                </div>
-              )}
-
-              <div hidden={!accepted} className="space-y-3">
-                <div className="grid grid-cols-3 gap-3">
-                  <TextField name="job_number" label="Job # (required)" values={initial} />
-                  <Field label="Job status">
-                    <select name="job_status" defaultValue="Converted" className={inputCls}>
-                      {JOB_STATUS_SUGGESTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Time converted (required)">
-                    <input name="time_converted" type="datetime-local" defaultValue={timeConvertedDefault} className={inputCls} />
-                  </Field>
-                </div>
-
-                {snapshot.job_status === PENDING_COMPLETION_STATUS && (
-                  <Field label="Sub-status">
-                    <select name="pending_completion_substatus" defaultValue="" className={inputCls}>
-                      <option value="" disabled>
-                        Select a sub-status
-                      </option>
-                      {PENDING_COMPLETION_SUBSTATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                )}
-
-                <div className="grid grid-cols-3 gap-3">
-                  <Field label="Job amount (required)">
-                    <input
-                      name="job_amount"
-                      type="number"
-                      step="0.01"
-                      value={jobAmount}
-                      onChange={(e) => {
-                        setJobAmountEdited(true);
-                        setJobAmountValue(e.target.value);
-                      }}
-                      className={inputCls}
-                    />
-                  </Field>
-                  <TextField name="quoted_service_amount" label="Vendor cost / provider quote" values={initial} type="number" step="0.01" />
-                  <Field label="Estimated profit">
-                    <div className="flex h-[34px] items-center rounded border border-black/10 bg-black/5 px-2 text-sm">
-                      {estimatedProfit === null
-                        ? "-"
-                        : estimatedProfit.toLocaleString("en-US", { style: "currency", currency: "USD" })}
-                    </div>
-                  </Field>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <SelectField name="customer_charged_via" label="Payment method" values={initial} options={PLATFORMS} />
-                  <SelectField
-                    name="payment_authorization_status"
-                    label="Payment authorization"
-                    values={initial}
-                    options={PAYMENT_AUTH_STATUSES}
-                  />
-                  <TextField name="preferred_vendor" label="Preferred vendor" values={initial} />
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <TextField name="eta_minutes" label="ETA (minutes)" values={initial} type="number" step="1" />
-                  <Field label="Schedule start">
-                    <input name="schedule_start_at" type="datetime-local" className={inputCls} />
-                  </Field>
-                  <Field label="Schedule end">
-                    <input name="schedule_end_at" type="datetime-local" className={inputCls} />
-                  </Field>
-                </div>
-
-                <TextAreaField name="dispatch_notes" label="Dispatch notes" values={initial} rows={2} />
-
+              <div className="space-y-3">
+                <p className="text-sm text-black/70">
+                  When the customer accepts the quote, convert this lead. The lead is saved, and Add Job opens with
+                  everything collected on this call already filled in — customer, service, locations, vehicle,
+                  service details, distance, quote and notes. The job is created when you save it there, and this lead
+                  is then marked Converted and linked to the job.
+                </p>
                 <div className="flex items-center justify-between gap-3 border-t border-black/10 pt-3">
                   <p className="text-xs text-black/50">
-                    Everything collected on this call carries over to the job — vendors, invoices, and the rest of
-                    dispatch are available on the job after converting.
+                    If the customer doesn&apos;t go ahead, just save the lead — no job is created.
                   </p>
                   <button
                     type="button"
@@ -410,7 +314,7 @@ export default function LeadForm({
                     disabled={isPending}
                     className="shrink-0 rounded bg-green-700 px-6 py-2.5 text-sm font-bold tracking-wide text-white shadow disabled:opacity-50"
                   >
-                    {isPending ? "CONVERTING..." : "CONVERT TO JOB"}
+                    {isPending ? "OPENING ADD JOB..." : "CUSTOMER ACCEPTED / CONVERT TO JOB"}
                   </button>
                 </div>
               </div>

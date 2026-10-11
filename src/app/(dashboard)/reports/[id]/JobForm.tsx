@@ -37,7 +37,6 @@ import {
   ServiceStep,
   LocationStep,
   VehicleStep,
-  DetailsStep,
   CustomerStep,
   QuoteStep,
 } from "../../intake/IntakePanels";
@@ -92,6 +91,9 @@ interface Props {
   currentAgentName?: string | null;
   openLeads?: OpenLead[];
   contactedVendors?: VendorRow[];
+  // Opened from "Customer Accepted / Convert to Job": the saved lead whose
+  // information fills this form. Saving the job converts and links that lead.
+  convertingFrom?: OpenLead;
 }
 
 // In a job the last step is the full dispatch/operations area, not just a
@@ -111,6 +113,7 @@ export default function JobForm({
   currentAgentName,
   openLeads,
   contactedVendors,
+  convertingFrom,
 }: Props) {
   const agentNames = agentOptions ?? TEAM_MEMBERS;
   const isLockedToSelf = currentRole === "agent";
@@ -121,11 +124,13 @@ export default function JobForm({
   const [active, setActive] = useState<IntakeStepId>("service");
   const [vendorsFee, setVendorsFee] = useState(job?.vendors_fee?.toString() ?? "");
   const [refundedToClient, setRefundedToClient] = useState(job?.refunded_to_client?.toString() ?? "");
-  const [jobStatus, setJobStatus] = useState(job?.job_status ?? "");
+  const [jobStatus, setJobStatus] = useState(job?.job_status ?? (convertingFrom ? "Converted" : ""));
   const [vendorPaidVia, setVendorPaidVia] = useState(job?.vendor_paid_via ?? "");
   const [timeDispatched, setTimeDispatched] = useState(isoToDatetimeLocalPHT(job?.time_dispatched));
   const [etaMinutes, setEtaMinutes] = useState(job?.eta_minutes?.toString() ?? "");
-  const [selectedLeadId, setSelectedLeadId] = useState("");
+  const [selectedLeadId, setSelectedLeadId] = useState(convertingFrom?.id ?? "");
+  // A converted lead's job starts "converted now".
+  const [convertedAt] = useState(() => (convertingFrom ? new Date().toISOString() : null));
   const [vendorRows, setVendorRows] = useState<VendorRow[]>(contactedVendors ?? []);
   const [approvers, setApprovers] = useState<string[] | null>(null);
   const [goa, setGoa] = useState(job?.goa ?? false);
@@ -134,7 +139,8 @@ export default function JobForm({
   const isDispatchedSelected = jobStatus.trim().toLowerCase() === "dispatched";
   const needsTimeDispatched = isDispatchedSelected && !timeDispatched;
 
-  const selectedLead = openLeads?.find((l) => l.id === selectedLeadId) ?? null;
+  const selectableLeads = convertingFrom ? [convertingFrom] : openLeads;
+  const selectedLead = selectableLeads?.find((l) => l.id === selectedLeadId) ?? null;
 
   // Every intake field's starting value, whether from the job being edited, a
   // lead picked to pre-fill a new job, or nothing.
@@ -393,6 +399,11 @@ export default function JobForm({
         setError(result.error);
         return;
       }
+      if (convertingFrom && result.id && result.reportId) {
+        // Converted from a lead: land on the new job.
+        router.push(`/reports/${result.reportId}/jobs/${result.id}`);
+        return;
+      }
       router.refresh();
       onClose();
     });
@@ -403,8 +414,7 @@ export default function JobForm({
   const completed: Partial<Record<IntakeStepId, boolean>> = {
     service: !!snapshot.job_type,
     location: !!(snapshot.service_street_address || snapshot.service_city),
-    vehicle: !!(snapshot.vehicle_make || snapshot.vehicle_model || snapshot.vehicle_year),
-    details: !!snapshot.issue,
+    vehicle: !!(snapshot.vehicle_make || snapshot.vehicle_model || snapshot.vehicle_year || snapshot.issue),
     customer: !!(snapshot.customer_name && snapshot.customer_phone),
     quote: !!snapshot.job_amount,
     convert: !!snapshot.job_number,
@@ -424,7 +434,15 @@ export default function JobForm({
           <input type="hidden" name="contacted_vendors_json" value={JSON.stringify(vendorRows)} />
           {isNewJob && selectedLeadId && <input type="hidden" name="selected_lead_id" value={selectedLeadId} />}
 
-          {isNewJob && openLeads && openLeads.length > 0 && (
+          {convertingFrom && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-2.5 text-sm">
+              Converting lead <span className="font-semibold">{convertingFrom.lead_number}</span> — everything collected
+              on the call is filled in. Complete the job and save it; the lead is then marked Converted and linked to
+              the job.
+            </div>
+          )}
+
+          {isNewJob && !convertingFrom && openLeads && openLeads.length > 0 && (
             <div className="rounded-lg bg-black/[0.03] p-2.5 sm:max-w-md">
               <label className="block space-y-1">
                 <span className="text-xs font-medium text-black/60">Auto-populate from an existing lead</span>
@@ -482,10 +500,7 @@ export default function JobForm({
                 <LocationStep values={initial} formRef={formRef} jobType={jobType} snapshot={snapshot} />
               </StepPanel>
               <StepPanel step={stepDef("vehicle")} active={active}>
-                <VehicleStep values={initial} jobType={jobType} />
-              </StepPanel>
-              <StepPanel step={stepDef("details")} active={active}>
-                <DetailsStep values={initial} jobType={jobType} />
+                <VehicleStep values={initial} jobType={jobType} formRef={formRef} />
               </StepPanel>
               <StepPanel step={stepDef("customer")} active={active}>
                 <CustomerStep values={initial} formRef={formRef} excludeLeadId={undefined} />
@@ -594,7 +609,7 @@ export default function JobForm({
                     <input
                       name="time_converted"
                       type="datetime-local"
-                      defaultValue={isoToDatetimeLocalPHT(job?.time_converted)}
+                      defaultValue={isoToDatetimeLocalPHT(job?.time_converted ?? convertedAt)}
                       className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                     />
                   </Field>
@@ -658,7 +673,7 @@ export default function JobForm({
                 ) : (
                   <select
                     name="agent"
-                    defaultValue={job?.agent ?? ""}
+                    defaultValue={job?.agent ?? initial.agent ?? ""}
                     className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                   >
                     <option value="" disabled>
@@ -675,7 +690,7 @@ export default function JobForm({
               <Field label="Dispatcher">
                 <select
                   name="dispatcher"
-                  defaultValue={job?.dispatcher ?? ""}
+                  defaultValue={job?.dispatcher ?? initial.dispatcher ?? ""}
                   className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                 >
                   <option value="">-</option>

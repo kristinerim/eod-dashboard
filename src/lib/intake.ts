@@ -12,7 +12,6 @@ export type IntakeStepId =
   | "service"
   | "location"
   | "vehicle"
-  | "details"
   | "customer"
   | "quote"
   | "convert";
@@ -31,7 +30,6 @@ export const INTAKE_STEPS: IntakeStepDef[] = [
     prompt: "Can I get the address where your vehicle is currently located?",
   },
   { id: "vehicle", title: "Vehicle Information", prompt: "What's the year, make, and model of your vehicle?" },
-  { id: "details", title: "Service Details", prompt: "Can you tell me what's going on with the vehicle?" },
   {
     id: "customer",
     title: "Customer Information",
