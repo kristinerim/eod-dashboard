@@ -8,6 +8,7 @@ import { LEAD_DISPOSITIONS, QUOTE_STATUSES, type QuoteStatus } from "@/lib/const
 import { intakeFieldsFromForm, intakeInitialFromRecord } from "@/lib/intake";
 import { normalizeEmail, normalizeName, normalizePhone } from "@/lib/leadMatching";
 import { numberOrNull } from "@/lib/formParse";
+import { CONTACT_REQUIRED_MESSAGE, hasValidContact } from "@/lib/contact";
 import { jobFieldsFromForm, strOrNull, upsertReportForDate } from "../reports/[id]/job-fields";
 
 type ActionResult = { success: true } | { error: string };
@@ -93,6 +94,10 @@ export async function saveLead(
   const fields = leadFieldsFromForm(formData);
   if (!leadHasAnyContent(fields)) {
     return { error: "Enter at least a service type, customer, vehicle, or location before saving." };
+  }
+  // Every save needs a way to reach the customer: a valid phone OR email.
+  if (!hasValidContact(fields.customer_phone, fields.email)) {
+    return { error: CONTACT_REQUIRED_MESSAGE };
   }
 
   let existing: { agent: string | null; status: string; quote_status: string | null } | null = null;

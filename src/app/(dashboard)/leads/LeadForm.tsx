@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { TEAM_MEMBERS, QUOTE_STATUS_LABELS, type QuoteStatus } from "@/lib/constants";
 import { INTAKE_STEPS, buildIntakeSummary, intakeInitialFromRecord, type IntakeStepId } from "@/lib/intake";
 import { saveLead, createJobFromLead, type SaveLeadIntent } from "./lead-actions";
+import { CONTACT_REQUIRED_MESSAGE, hasValidContact } from "@/lib/contact";
 import JobForm from "../reports/[id]/JobForm";
 import type { Job } from "../reports/[id]/JobsTable";
 import type { Lead } from "./LeadsTable";
@@ -75,6 +76,8 @@ export default function LeadForm({
 
   const { formRef, snapshot, formHandlers } = useFormSnapshot({ ...initial, quote_status: quoteStatus });
   const jobType = snapshot.job_type ?? initial.job_type ?? "";
+  // Save Lead stays disabled until there is a valid phone or email.
+  const canSave = hasValidContact(snapshot.customer_phone, snapshot.client_email);
 
   const steps = INTAKE_STEPS;
 
@@ -95,6 +98,10 @@ export default function LeadForm({
     const form = formRef.current;
     if (!form) return;
     const formData = new FormData(form);
+    // Same rule the server enforces: a valid phone or email is needed to save.
+    if (!hasValidContact(String(formData.get("customer_phone") ?? ""), String(formData.get("client_email") ?? ""))) {
+      return jump("customer", CONTACT_REQUIRED_MESSAGE);
+    }
 
     startTransition(async () => {
       const result = await saveLead(leadId, formData, intent);
@@ -240,11 +247,17 @@ export default function LeadForm({
                 <button
                   type="button"
                   onClick={() => submit("save", "stay")}
-                  disabled={isPending}
+                  disabled={isPending || !canSave}
+                  title={canSave ? undefined : "Enter a valid customer phone number or email address to save"}
                   className="rounded border border-black/20 px-3 py-1.5 text-sm disabled:opacity-50"
                 >
                   {isPending ? "Saving..." : "Save lead"}
                 </button>
+                {!canSave && (
+                  <span className="self-center text-xs text-black/50">
+                    Add a customer phone number or email to save
+                  </span>
+                )}
               </>
             }
           >
