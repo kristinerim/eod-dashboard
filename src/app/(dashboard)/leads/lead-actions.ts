@@ -5,10 +5,10 @@ import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/aggregate";
 import { getCurrentProfile, isSupervisor, requireSupervisor } from "@/lib/profile";
 import { LEAD_DISPOSITIONS, QUOTE_STATUSES, type QuoteStatus } from "@/lib/constants";
-import { intakeFieldsFromForm } from "@/lib/intake";
+import { intakeFieldsFromForm, intakeInitialFromRecord } from "@/lib/intake";
 import { normalizeEmail, normalizeName, normalizePhone } from "@/lib/leadMatching";
 import { numberOrNull } from "@/lib/formParse";
-import { strOrNull, upsertReportForDate } from "../reports/[id]/job-fields";
+import { jobFieldsFromForm, strOrNull, upsertReportForDate } from "../reports/[id]/job-fields";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -202,18 +202,22 @@ export async function deleteLead(leadId: string): Promise<ActionResult> {
   return { success: true };
 }
 
-export type StartConversionResult =
-  | { success: true; lead: Record<string, unknown>; reportId: string }
-  // The lead was already converted (a second click, or another window): go to its job.
+export type CreateJobFromLeadResult =
+  | { success: true; job: Record<string, unknown>; reportId: string; leadNumber: string }
+  // The lead already has a job (a second click, or another window): open that one.
   | { existing: { reportId: string; jobId: string } }
   | { error: string };
 
-// "Customer Accepted / Convert to Job": the form has already saved the lead.
-// This hands back the saved lead and the report the new job will start on, so
-// the Add Job form can open pre-filled. No job exists yet — it's created when
-// the agent saves that form, which is also when the lead becomes Converted and
-// is linked to the job (see createJob).
-export async function startLeadConversion(leadId: string): Promise<StartConversionResult> {
+// "Customer Proceed" -> "Yes - Create Job". The form has already saved the
+// lead. This creates the Job right now, carrying everything the lead holds
+// (customer, locations, vehicle and service details, distance, quote, notes,
+// agent), links the two records, and marks the lead Converted. The job number
+// isn't known yet, so it starts blank and is required when the job is saved
+// from Dispatch & Operations.
+//
+// The lead is claimed first in one conditional update, so a double click (or
+// two windows) can only ever produce one job.
+export async function createJobFromLead(leadId: string): Promise<CreateJobFromLeadResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -228,13 +232,70 @@ export async function startLeadConversion(leadId: string): Promise<StartConversi
     const { data: job } = await supabase.from("jobs").select("report_id").eq("id", lead.job_id).single();
     if (job) return { existing: { reportId: job.report_id, jobId: lead.job_id } };
   }
-  if (lead.status !== "open") return { error: "This lead is closed. Reopen it before converting it to a job." };
+  if (lead.status !== "open") return { error: "This lead is closed. Reopen it before creating a job from it." };
 
   const permissionError = await requireLeadPermission(lead.agent);
   if (permissionError) return { error: permissionError };
+  if (!lead.agent) return { error: "Select the agent for this lead before creating a job." };
+
+  // The job takes everything the lead collected, through the same parsing a
+  // saved job form uses (so composed values like the vehicle and drop-off
+  // lines come out identically).
+  const initial = intakeInitialFromRecord(lead);
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(initial)) if (value !== "") formData.set(key, value);
+  const quoteTotal = (Number(lead.quoted_price) || 0) + (Number(lead.additional_charges) || 0);
+  if (quoteTotal > 0) formData.set("job_amount", String(quoteTotal));
+  formData.set("job_status", "Converted");
+  // Philippine Time wall clock, the way the job form reads it.
+  formData.set("time_converted", new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 16));
+  const fields = jobFieldsFromForm(formData);
+
+  const { data: claimed, error: claimError } = await supabase
+    .from("leads")
+    .update({ status: "converted", converted_at: new Date().toISOString(), quote_status: "accepted" })
+    .eq("id", leadId)
+    .eq("status", "open")
+    .select("id");
+  if (claimError) return { error: claimError.message };
+  if (!claimed || claimed.length === 0) return { error: "This lead was already converted or closed." };
+
+  const giveLeadBack = () => supabase.from("leads").update({ status: "open", converted_at: null }).eq("id", leadId);
 
   const resolved = await upsertReportForDate(supabase, user.id, todayISO());
-  if ("error" in resolved) return { error: resolved.error };
+  if ("error" in resolved) {
+    await giveLeadBack();
+    return { error: resolved.error };
+  }
 
-  return { success: true, lead, reportId: resolved.id };
+  const { count } = await supabase
+    .from("jobs")
+    .select("id", { count: "exact", head: true })
+    .eq("report_id", resolved.id);
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("jobs")
+    .insert({
+      ...fields,
+      report_id: resolved.id,
+      row_number: (count ?? 0) + 1,
+      source: "manual",
+      created_by: user.id,
+      lead_id: leadId,
+    })
+    .select("*")
+    .single();
+  if (insertError || !inserted) {
+    await giveLeadBack();
+    return { error: insertError?.message ?? "Failed to create the job." };
+  }
+
+  const { error: linkError } = await supabase.from("leads").update({ job_id: inserted.id }).eq("id", leadId);
+  if (linkError) console.error(`Failed to link lead ${leadId} to job ${inserted.id}:`, linkError.message);
+
+  revalidateLeads(leadId);
+  revalidatePath(`/reports/${resolved.id}`);
+  revalidatePath("/");
+
+  return { success: true, job: inserted, reportId: resolved.id, leadNumber: lead.lead_number };
 }

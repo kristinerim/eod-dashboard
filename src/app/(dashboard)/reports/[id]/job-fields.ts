@@ -199,6 +199,7 @@ export function jobFieldsFromForm(formData: FormData) {
     // Customer payment authorization (shown in the dispatch step, not the intake)
     customer_card_last4: strOrNull(formData.get("customer_card_last4")),
     customer_billing_address: strOrNull(formData.get("customer_billing_address")),
+    customer_billing_zip: strOrNull(formData.get("customer_billing_zip")),
 
     // Schedule
     schedule_start_at: datetimeLocalPHTToIso(formData.get("schedule_start_at")),

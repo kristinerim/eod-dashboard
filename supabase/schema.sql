@@ -1271,3 +1271,6 @@ alter table jobs add column if not exists vendor_phone text;
 create index if not exists jobs_status_completed_at_idx on jobs(job_status, completed_at desc);
 create index if not exists jobs_status_cancelled_at_idx on jobs(job_status, cancelled_at desc);
 create index if not exists jobs_status_pending_at_idx on jobs(job_status, pending_completion_at);
+
+-- Customer billing ZIP (Customer & Payment Information step)
+alter table jobs add column if not exists customer_billing_zip text;

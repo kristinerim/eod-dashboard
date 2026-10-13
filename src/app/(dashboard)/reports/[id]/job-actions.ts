@@ -436,7 +436,7 @@ export async function updateJob(jobId: string, formData: FormData): Promise<Acti
   revalidatePath(`/reports/${targetReportId}`);
   if (targetReportId !== reportId) revalidatePath(`/reports/${reportId}`);
   revalidatePath("/");
-  return { success: true };
+  return { success: true, reportId: targetReportId };
 }
 
 export async function deleteJob(jobId: string): Promise<ActionResult> {
@@ -496,6 +496,48 @@ export async function autosaveVendorDispatch(
       eta_minutes: numberOrNull(j.eta_minutes),
     })
     .eq("id", jobId);
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
+const CUSTOMER_PAYMENT_FIELDS = [
+  "customer_name",
+  "client_company_name",
+  "customer_phone",
+  "phone_extension",
+  "client_email",
+  "caller_id",
+  "customer_billing_address",
+  "customer_billing_zip",
+  "payment_authorization_status",
+  "customer_card_last4",
+] as const;
+
+// "Continue to Dispatch & Operations": saves just the Customer & Payment
+// Information step on its own, so the agent can move on before the rest of the
+// job (job number, amount, dispatch details) is complete. Nothing else on the
+// job is touched. Only the last four digits of a card are ever accepted here.
+export async function saveCustomerPaymentStep(
+  jobId: string,
+  input: Partial<Record<(typeof CUSTOMER_PAYMENT_FIELDS)[number], string>>
+): Promise<{ success: true } | { error: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const update: Record<string, string | null> = {};
+  for (const key of CUSTOMER_PAYMENT_FIELDS) {
+    if (key in input) update[key] = strOrNull(String(input[key] ?? ""));
+  }
+  const last4 = update.customer_card_last4;
+  if (last4 && !/^\d{4}$/.test(last4)) {
+    return { error: "Enter only the last 4 digits of the card — never the full card number." };
+  }
+  if (Object.keys(update).length === 0) return { success: true };
+
+  const { error } = await supabase.from("jobs").update(update).eq("id", jobId);
   if (error) return { error: error.message };
   return { success: true };
 }

@@ -15,10 +15,9 @@ import {
   INTAKE_STEPS,
   buildIntakeSummary,
   intakeInitialFromRecord,
-  stepFieldKeys,
   type IntakeStepId,
 } from "@/lib/intake";
-import { autosaveVendorDispatch, createJob, updateJob } from "./job-actions";
+import { autosaveVendorDispatch, createJob, saveCustomerPaymentStep, updateJob } from "./job-actions";
 import type { ContactedVendorRow } from "./job-fields";
 import type { Job } from "./JobsTable";
 import { listApproverNames } from "../../intake/vendor-search-actions";
@@ -91,9 +90,10 @@ interface Props {
   currentAgentName?: string | null;
   openLeads?: OpenLead[];
   contactedVendors?: VendorRow[];
-  // Opened from "Customer Accepted / Convert to Job": the saved lead whose
-  // information fills this form. Saving the job converts and links that lead.
-  convertingFrom?: OpenLead;
+  // Opened right after "Customer Proceed -> Create Job": the job already exists,
+  // was created from this lead, and the form lands on `startStep`.
+  createdFromLead?: string;
+  startStep?: IntakeStepId;
 }
 
 // In a job the last step is the full dispatch/operations area, not just a
@@ -101,7 +101,13 @@ interface Props {
 const JOB_STEPS = INTAKE_STEPS.map((s) =>
   s.id === "convert"
     ? { ...s, title: "Dispatch & Operations", prompt: "Assign, schedule, and dispatch the job." }
-    : s
+    : s.id === "customer"
+      ? {
+          ...s,
+          title: "Customer & Payment Information",
+          prompt: "Let me confirm your details, and I'll take your payment information to secure the service.",
+        }
+      : s
 );
 
 export default function JobForm({
@@ -113,7 +119,8 @@ export default function JobForm({
   currentAgentName,
   openLeads,
   contactedVendors,
-  convertingFrom,
+  createdFromLead,
+  startStep,
 }: Props) {
   const agentNames = agentOptions ?? TEAM_MEMBERS;
   const isLockedToSelf = currentRole === "agent";
@@ -121,16 +128,14 @@ export default function JobForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [active, setActive] = useState<IntakeStepId>("service");
+  const [active, setActive] = useState<IntakeStepId>(startStep ?? "service");
   const [vendorsFee, setVendorsFee] = useState(job?.vendors_fee?.toString() ?? "");
   const [refundedToClient, setRefundedToClient] = useState(job?.refunded_to_client?.toString() ?? "");
-  const [jobStatus, setJobStatus] = useState(job?.job_status ?? (convertingFrom ? "Converted" : ""));
+  const [jobStatus, setJobStatus] = useState(job?.job_status ?? "");
   const [vendorPaidVia, setVendorPaidVia] = useState(job?.vendor_paid_via ?? "");
   const [timeDispatched, setTimeDispatched] = useState(isoToDatetimeLocalPHT(job?.time_dispatched));
   const [etaMinutes, setEtaMinutes] = useState(job?.eta_minutes?.toString() ?? "");
-  const [selectedLeadId, setSelectedLeadId] = useState(convertingFrom?.id ?? "");
-  // A converted lead's job starts "converted now".
-  const [convertedAt] = useState(() => (convertingFrom ? new Date().toISOString() : null));
+  const [selectedLeadId, setSelectedLeadId] = useState("");
   const [vendorRows, setVendorRows] = useState<VendorRow[]>(contactedVendors ?? []);
   const [approvers, setApprovers] = useState<string[] | null>(null);
   const [goa, setGoa] = useState(job?.goa ?? false);
@@ -139,8 +144,7 @@ export default function JobForm({
   const isDispatchedSelected = jobStatus.trim().toLowerCase() === "dispatched";
   const needsTimeDispatched = isDispatchedSelected && !timeDispatched;
 
-  const selectableLeads = convertingFrom ? [convertingFrom] : openLeads;
-  const selectedLead = selectableLeads?.find((l) => l.id === selectedLeadId) ?? null;
+  const selectedLead = openLeads?.find((l) => l.id === selectedLeadId) ?? null;
 
   // Every intake field's starting value, whether from the job being edited, a
   // lead picked to pre-fill a new job, or nothing.
@@ -161,7 +165,6 @@ export default function JobForm({
 
   const jobType = snapshot.job_type ?? initial.job_type ?? "";
   const steps = JOB_STEPS;
-  const cardKeys = stepFieldKeys("card", jobType);
   const summary = buildIntakeSummary({ ...snapshot, job_status: jobStatus }, "job");
 
   // Dispatching an appointment or converted job means the ETA now measures
@@ -349,6 +352,40 @@ export default function JobForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorRows, job, isPending]);
 
+  // "Continue to Dispatch & Operations": save the customer and payment details on
+  // their own (the rest of the job is saved later), then open Dispatch &
+  // Operations on the same job.
+  const [continueError, setContinueError] = useState<string | null>(null);
+  const [isContinuing, setIsContinuing] = useState(false);
+  async function continueToDispatch() {
+    setContinueError(null);
+    if (!job) {
+      setActive("convert");
+      return;
+    }
+    const form = formRef.current;
+    const read = (name: string) => (form?.elements.namedItem(name) as HTMLInputElement | null)?.value ?? "";
+    setIsContinuing(true);
+    const result = await saveCustomerPaymentStep(job.id, {
+      customer_name: read("customer_name"),
+      client_company_name: read("client_company_name"),
+      customer_phone: read("customer_phone"),
+      phone_extension: read("phone_extension"),
+      client_email: read("client_email"),
+      caller_id: read("caller_id"),
+      customer_billing_address: read("customer_billing_address"),
+      customer_billing_zip: read("customer_billing_zip"),
+      payment_authorization_status: read("payment_authorization_status"),
+      customer_card_last4: read("customer_card_last4"),
+    });
+    setIsContinuing(false);
+    if ("error" in result) {
+      setContinueError(result.error);
+      return;
+    }
+    setActive("convert");
+  }
+
   function jump(step: IntakeStepId, message: string) {
     setActive(step);
     setError(message);
@@ -399,9 +436,9 @@ export default function JobForm({
         setError(result.error);
         return;
       }
-      if (convertingFrom && result.id && result.reportId) {
-        // Converted from a lead: land on the new job.
-        router.push(`/reports/${result.reportId}/jobs/${result.id}`);
+      if (createdFromLead && job) {
+        // The job was created from a lead: finish on the job's own page.
+        router.push(`/reports/${("reportId" in result && result.reportId) || reportId}/jobs/${job.id}`);
         return;
       }
       router.refresh();
@@ -434,15 +471,15 @@ export default function JobForm({
           <input type="hidden" name="contacted_vendors_json" value={JSON.stringify(vendorRows)} />
           {isNewJob && selectedLeadId && <input type="hidden" name="selected_lead_id" value={selectedLeadId} />}
 
-          {convertingFrom && (
+          {createdFromLead && (
             <div className="rounded-lg border border-green-200 bg-green-50 p-2.5 text-sm">
-              Converting lead <span className="font-semibold">{convertingFrom.lead_number}</span> — everything collected
-              on the call is filled in. Complete the job and save it; the lead is then marked Converted and linked to
-              the job.
+              Job created from lead <span className="font-semibold">{createdFromLead}</span>. Everything collected on
+              the call is already here — confirm the customer and payment details, then continue to Dispatch &amp;
+              Operations.
             </div>
           )}
 
-          {isNewJob && !convertingFrom && openLeads && openLeads.length > 0 && (
+          {isNewJob && openLeads && openLeads.length > 0 && (
             <div className="rounded-lg bg-black/[0.03] p-2.5 sm:max-w-md">
               <label className="block space-y-1">
                 <span className="text-xs font-medium text-black/60">Auto-populate from an existing lead</span>
@@ -503,7 +540,64 @@ export default function JobForm({
                 <VehicleStep values={initial} jobType={jobType} formRef={formRef} />
               </StepPanel>
               <StepPanel step={stepDef("customer")} active={active}>
-                <CustomerStep values={initial} formRef={formRef} excludeLeadId={undefined} />
+                <CustomerStep values={initial} formRef={formRef} excludeLeadId={undefined}>
+                  <div className="grid grid-cols-3 gap-3">
+                    <TextField
+                      name="customer_billing_address"
+                      label="Billing address"
+                      values={initial}
+                      className="col-span-2"
+                    />
+                    <Field label="ZIP code">
+                      <input
+                        name="customer_billing_zip"
+                        inputMode="numeric"
+                        defaultValue={(job?.customer_billing_zip as string | null | undefined) ?? ""}
+                        className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-black/10 p-3">
+                    <h4 className="text-sm font-semibold text-black/80">Payment information</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <SelectField
+                        name="payment_authorization_status"
+                        label="Payment status"
+                        values={initial}
+                        options={PAYMENT_AUTH_STATUSES}
+                      />
+                      <TextField
+                        name="customer_card_last4"
+                        label="Card on file (last 4 digits)"
+                        values={initial}
+                        maxLength={4}
+                        inputMode="numeric"
+                      />
+                    </div>
+                    {/^\d{4}$/.test(snapshot.customer_card_last4 ?? "") && (
+                      <p className="text-sm">
+                        Card on file: <span className="font-mono">**** **** **** {snapshot.customer_card_last4}</span>
+                      </p>
+                    )}
+                    <p className="text-xs text-black/50">
+                      Secure card entry (card number, expiry and CVV through the payment provider) isn&apos;t connected
+                      yet. Until it is, record only the last 4 digits here — never the full card number or CVV.
+                    </p>
+                  </div>
+
+                  {continueError && <p className="text-sm text-red-600">{continueError}</p>}
+                  <div className="flex justify-end border-t border-black/10 pt-3">
+                    <button
+                      type="button"
+                      onClick={continueToDispatch}
+                      disabled={isContinuing}
+                      className="rounded bg-green-700 px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {isContinuing ? "Saving..." : "Continue to Dispatch & Operations →"}
+                    </button>
+                  </div>
+                </CustomerStep>
               </StepPanel>
               <StepPanel step={stepDef("quote")} active={active}>
                 <QuoteStep values={initial} snapshot={snapshot} mode="job" />
@@ -609,7 +703,7 @@ export default function JobForm({
                     <input
                       name="time_converted"
                       type="datetime-local"
-                      defaultValue={isoToDatetimeLocalPHT(job?.time_converted ?? convertedAt)}
+                      defaultValue={isoToDatetimeLocalPHT(job?.time_converted)}
                       className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                     />
                   </Field>
@@ -828,21 +922,6 @@ export default function JobForm({
                 </select>
               </Field>
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <SelectField
-                name="payment_authorization_status"
-                label="Payment authorization status"
-                values={initial}
-                options={PAYMENT_AUTH_STATUSES}
-              />
-              {cardKeys.includes("customer_card_last4") && (
-                <TextField name="customer_card_last4" label="Last 4 digits of customer card" values={initial} maxLength={4} />
-              )}
-            </div>
-            {cardKeys.includes("customer_billing_address") && (
-              <TextField name="customer_billing_address" label="Billing address of customer" values={initial} />
-            )}
 
             {vendorPaidVia && (
               <Field label="Vendor card (last 4 digits)">

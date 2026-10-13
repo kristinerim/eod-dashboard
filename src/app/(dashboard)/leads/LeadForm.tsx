@@ -4,8 +4,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { TEAM_MEMBERS, QUOTE_STATUS_LABELS, type QuoteStatus } from "@/lib/constants";
 import { INTAKE_STEPS, buildIntakeSummary, intakeInitialFromRecord, type IntakeStepId } from "@/lib/intake";
-import { saveLead, startLeadConversion, type SaveLeadIntent } from "./lead-actions";
-import JobForm, { type OpenLead } from "../reports/[id]/JobForm";
+import { saveLead, createJobFromLead, type SaveLeadIntent } from "./lead-actions";
+import JobForm from "../reports/[id]/JobForm";
+import type { Job } from "../reports/[id]/JobsTable";
 import type { Lead } from "./LeadsTable";
 import IntakeShell, { StepPanel } from "../intake/IntakeShell";
 import { useFormSnapshot } from "../intake/useFormSnapshot";
@@ -68,8 +69,9 @@ export default function LeadForm({
   const [active, setActive] = useState<IntakeStepId>(startAtConvert ? "convert" : "service");
   const [error, setError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
-  // Set once the customer has accepted: the form hands over to Add Job.
-  const [converting, setConverting] = useState<{ lead: OpenLead; reportId: string } | null>(null);
+  // "Customer Proceed" asks first; once the job exists, the form hands over to it.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [converting, setConverting] = useState<{ job: Job; reportId: string; leadNumber: string } | null>(null);
 
   const { formRef, snapshot, formHandlers } = useFormSnapshot({ ...initial, quote_status: quoteStatus });
   const jobType = snapshot.job_type ?? initial.job_type ?? "";
@@ -122,23 +124,30 @@ export default function LeadForm({
     setError(message);
   }
 
-  // "Customer Accepted / Convert to Job": save the lead, then open Add Job with
-  // everything collected so far already filled in. The job itself is created
-  // when the agent saves that form.
-  function handleConvert() {
+  // "Customer Proceed": check the lead can become a job, then ask.
+  function handleProceed() {
     setError(null);
     setSavedNote(null);
     const form = formRef.current;
     if (!form) return;
-    const formData = new FormData(form);
-    const text = (name: string) => String(formData.get(name) ?? "").trim();
-
+    const text = (name: string) => String(new FormData(form).get(name) ?? "").trim();
     if (!text("agent")) return jump("service", "Select the agent for this lead.");
-    if (!text("customer_name")) return jump("customer", "Enter the customer name before converting.");
+    if (!text("customer_name")) return jump("customer", "Enter the customer name before creating a job.");
+    setConfirmOpen(true);
+  }
+
+  // "Yes - Create Job": save the lead, create the job from it right now, and go
+  // straight to Customer & Payment Information on that job.
+  function createJob() {
+    setError(null);
+    const form = formRef.current;
+    if (!form) return;
+    const formData = new FormData(form);
 
     startTransition(async () => {
       const saved = await saveLead(leadId, formData, "accepted");
       if ("error" in saved) {
+        setConfirmOpen(false);
         setError(saved.error);
         return;
       }
@@ -146,17 +155,19 @@ export default function LeadForm({
       setLeadNumber(saved.leadNumber);
       setQuoteStatus("accepted");
 
-      const started = await startLeadConversion(saved.id);
-      if ("error" in started) {
-        setError(started.error);
+      const created = await createJobFromLead(saved.id);
+      if ("error" in created) {
+        setConfirmOpen(false);
+        setError(created.error);
         return;
       }
-      if ("existing" in started) {
+      if ("existing" in created) {
         // Already converted (a second click or another window): go to its job.
-        router.push(`/reports/${started.existing.reportId}/jobs/${started.existing.jobId}`);
+        router.push(`/reports/${created.existing.reportId}/jobs/${created.existing.jobId}`);
         return;
       }
-      setConverting({ lead: started.lead as OpenLead, reportId: started.reportId });
+      setConfirmOpen(false);
+      setConverting({ job: created.job as unknown as Job, reportId: created.reportId, leadNumber: created.leadNumber });
     });
   }
 
@@ -166,7 +177,9 @@ export default function LeadForm({
     return (
       <JobForm
         reportId={converting.reportId}
-        convertingFrom={converting.lead}
+        job={converting.job}
+        createdFromLead={converting.leadNumber}
+        startStep="customer"
         onClose={onClose}
         agentOptions={agentOptions}
         currentRole={currentRole}
@@ -286,11 +299,11 @@ export default function LeadForm({
                   </button>
                   <button
                     type="button"
-                    onClick={handleConvert}
+                    onClick={handleProceed}
                     disabled={isPending}
                     className="rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
                   >
-                    {isPending ? "Opening Add Job..." : "Customer Accepted / Convert to Job"}
+                    Customer Proceed
                   </button>
                 </div>
               </QuoteStep>
@@ -299,10 +312,11 @@ export default function LeadForm({
             <StepPanel step={stepDef("convert")} active={active}>
               <div className="space-y-3">
                 <p className="text-sm text-black/70">
-                  When the customer accepts the quote, convert this lead. The lead is saved, and Add Job opens with
-                  everything collected on this call already filled in — customer, service, locations, vehicle,
-                  service details, distance, quote and notes. The job is created when you save it there, and this lead
-                  is then marked Converted and linked to the job.
+                  When the customer agrees to proceed, click Customer Proceed and confirm. The lead is saved and a Job
+                  is created from it with everything collected on this call — customer, service, locations, vehicle,
+                  service details, distance, quote and notes. You then go straight to Customer &amp; Payment
+                  Information, and on to Dispatch &amp; Operations. This lead is marked Converted and linked to the
+                  job.
                 </p>
                 <div className="flex items-center justify-between gap-3 border-t border-black/10 pt-3">
                   <p className="text-xs text-black/50">
@@ -310,11 +324,11 @@ export default function LeadForm({
                   </p>
                   <button
                     type="button"
-                    onClick={handleConvert}
+                    onClick={handleProceed}
                     disabled={isPending}
                     className="shrink-0 rounded bg-green-700 px-6 py-2.5 text-sm font-bold tracking-wide text-white shadow disabled:opacity-50"
                   >
-                    {isPending ? "OPENING ADD JOB..." : "CUSTOMER ACCEPTED / CONVERT TO JOB"}
+                    CUSTOMER PROCEED
                   </button>
                 </div>
               </div>
@@ -324,6 +338,34 @@ export default function LeadForm({
           </IntakeShell>
         </form>
       </div>
+
+      {confirmOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div role="dialog" aria-modal="true" className="w-full max-w-md space-y-4 rounded-lg bg-white p-5 shadow-xl">
+            <p className="text-base font-semibold">
+              The customer has agreed to proceed. Would you like to create a Job?
+            </p>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                disabled={isPending}
+                className="rounded border border-black/20 px-4 py-2 text-sm disabled:opacity-50"
+              >
+                No – Stay on Lead
+              </button>
+              <button
+                type="button"
+                onClick={createJob}
+                disabled={isPending}
+                className="rounded bg-green-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {isPending ? "Creating Job..." : "Yes – Create Job"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
