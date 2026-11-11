@@ -1274,3 +1274,194 @@ create index if not exists jobs_status_pending_at_idx on jobs(job_status, pendin
 
 -- Customer billing ZIP (Customer & Payment Information step)
 alter table jobs add column if not exists customer_billing_zip text;
+
+-- Agent & Dispatcher roster (managed from the Hub Team page)
+-- Agent & Dispatcher roster: the names offered in the Agent and Dispatcher
+-- dropdowns, managed by admins from the Hub (Team page) instead of in code.
+-- Jobs and leads store the NAME as text, so deactivating or removing someone
+-- here never changes or hides any past job, lead or report.
+-- Safe to run more than once.
+
+create table if not exists team_roster (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  is_agent boolean not null default true,
+  is_dispatcher boolean not null default false,
+  is_active boolean not null default true,
+  notes text,
+  deactivated_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint team_roster_has_a_role check (is_agent or is_dispatcher),
+  constraint team_roster_name_not_blank check (length(btrim(name)) > 0)
+);
+
+-- A person can only be listed once (ignoring capitals).
+create unique index if not exists team_roster_name_lower_idx on team_roster (lower(name));
+
+alter table team_roster enable row level security;
+
+-- Everyone signed in can read the roster (it feeds the dropdowns).
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename = 'team_roster' and policyname = 'authenticated can read the roster') then
+    create policy "authenticated can read the roster" on team_roster for select to authenticated using (true);
+  end if;
+  -- Only Operations Managers and Admin Coordinators can change it.
+  if not exists (select 1 from pg_policies where tablename = 'team_roster' and policyname = 'full admins can add to the roster') then
+    create policy "full admins can add to the roster" on team_roster for insert to authenticated with check (is_full_admin());
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'team_roster' and policyname = 'full admins can edit the roster') then
+    create policy "full admins can edit the roster" on team_roster for update to authenticated using (is_full_admin()) with check (is_full_admin());
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'team_roster' and policyname = 'full admins can remove from the roster') then
+    create policy "full admins can remove from the roster" on team_roster for delete to authenticated using (is_full_admin());
+  end if;
+end $$;
+
+-- Keep updated_at current.
+create or replace function team_roster_touch() returns trigger
+language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+drop trigger if exists team_roster_touch_trg on team_roster;
+create trigger team_roster_touch_trg before update on team_roster
+  for each row execute function team_roster_touch();
+
+-- Day one: exactly today's lists. Everyone who was in the old fixed list is
+-- both an Agent and a Dispatcher choice, as before.
+insert into team_roster (name, is_agent, is_dispatcher)
+select v.name, true, true
+from (values
+  ('Aaron Abarquez'),
+  ('Abrille Arado'),
+  ('Adonis Mayol'),
+  ('Ador Pajarillaga'),
+  ('Adrian Lansang'),
+  ('Aira Mae Ceniza'),
+  ('Alex Jr Abao'),
+  ('Alexandro V. Cerdeña'),
+  ('Alfred Mendowaz Saidu'),
+  ('Aljen Cervantes'),
+  ('Alleona Barrientos'),
+  ('Alvin Surigao'),
+  ('Analiza Levantino'),
+  ('Angelo Caliboso Corpuz'),
+  ('Ani Emeka Manuel'),
+  ('Ann Jean Madlos'),
+  ('Axel Von B. Ruiz'),
+  ('Bai-Aminah Benito'),
+  ('Bethanie Rose Huelar'),
+  ('Bright Echezonachukwu'),
+  ('Bryan Lava'),
+  ('Camille Rose Ann Agero'),
+  ('Charmaine Cabahug'),
+  ('Chioma Vivian Iwunna'),
+  ('Christina Mikaella Fronteras'),
+  ('Clarisse Ann Cruz'),
+  ('Coleen Maglupay'),
+  ('Collins Nnadi Ifeanyichukwu'),
+  ('Cynthia Ngozi Ugochukwu'),
+  ('David James Apad'),
+  ('Dennis Njoroge'),
+  ('Emmanuel Briggs Adepoju'),
+  ('Emmanuella Eloho Umukoro'),
+  ('Fredrick Damian Chukwu'),
+  ('Gemma Mercado Awat'),
+  ('Hedaya Balindong'),
+  ('Hishi Keana Bulawan'),
+  ('Ihmee Patentes'),
+  ('Irika Braza'),
+  ('Jake Dawang'),
+  ('Jalaiza Macatangay'),
+  ('Jasen Marie Lopez'),
+  ('Jason Nabung'),
+  ('Jasper Jon Glenogo'),
+  ('Jay Fred Bautista'),
+  ('Jefferson Apolinar'),
+  ('Jeramy Culanag'),
+  ('Jessa Bayot'),
+  ('Jillian Gayle Tabon'),
+  ('Joan Campos'),
+  ('Joeval Fiel'),
+  ('John Antonio Abarquez'),
+  ('John Paul Cabasac'),
+  ('John Rey Montero'),
+  ('Joland Valencia'),
+  ('Jonah Vasquez'),
+  ('Joseph Oche Ujah'),
+  ('Josh Stephen Arce'),
+  ('Joshua Dedomo'),
+  ('Joshua delos Reyes'),
+  ('Justin Clyde Polistico'),
+  ('Justine Abel Bulawan'),
+  ('Keddrick Jewel Viola'),
+  ('Khalid Sadjail'),
+  ('Kheena Mae Acedilla'),
+  ('Kris Gienikko Amable'),
+  ('Krizyl Chloe Tan'),
+  ('Lea Leal Carson'),
+  ('Lenoel Montilla III'),
+  ('Lesther Flores'),
+  ('Levie Gajo'),
+  ('Luiggi Diomaboc'),
+  ('Ma Allyssa Jean Ramirez'),
+  ('Ma. Criselda Consulta'),
+  ('Marc Ceazar Pineda'),
+  ('Marie Grace Solo'),
+  ('Marie Martha Santos'),
+  ('Mariel Carbonell'),
+  ('Mark Giovanni Amable'),
+  ('Mark Jason Morales'),
+  ('Mark Joseph Escalante'),
+  ('Mary Grace Alcido'),
+  ('Mary Grace Bordado'),
+  ('Mary Joyce Paez'),
+  ('Meccael Segundo'),
+  ('Michael Tosin'),
+  ('Mikhael Jose Galocgoc'),
+  ('Muhammad Zeeshan'),
+  ('Neljhun Elondo'),
+  ('Noel B. Estrevillo Jr.'),
+  ('Onyssa Espinosa'),
+  ('Pamela Nortey'),
+  ('Paschal Chinaemelum Umeh'),
+  ('Pervy Jane Aliño'),
+  ('Phil Anthony Nierves'),
+  ('Philip Joseph Biscocho'),
+  ('Primo Jorge Pador'),
+  ('Raffy Antic'),
+  ('Ram Arthur Yaba'),
+  ('Ramir Kristoffer Reyes'),
+  ('Raphael Omondi Aloo'),
+  ('Rashimar Mohamad'),
+  ('Regine Operania'),
+  ('Renalyn Moradas'),
+  ('Rene Galla Silva'),
+  ('Rhae Mae Tubo'),
+  ('Rhlyn Eddio-Amango'),
+  ('Rico Mirafuentes Ranoco'),
+  ('Romeo Dimiao'),
+  ('Rose Ann Romero'),
+  ('Sally Jean Dauzon'),
+  ('Sean Baring'),
+  ('Serget Joy Sepiacan'),
+  ('Sheila May Bernales'),
+  ('Sherhan Sulaiman Jarol'),
+  ('Shierjon Donie Lagsac'),
+  ('Steffie Ann Bawiga'),
+  ('Theophilus Franklin Stemn'),
+  ('Zyrene Mae Jarlego')
+) as v(name)
+on conflict do nothing;
+
+-- Agents with a login who weren't in that list (they were offered as Agents
+-- before, not as Dispatchers).
+insert into team_roster (name, is_agent, is_dispatcher)
+select distinct btrim(p.agent_name), true, false
+from profiles p
+where p.role = 'agent' and p.agent_name is not null and btrim(p.agent_name) <> ''
+on conflict do nothing;

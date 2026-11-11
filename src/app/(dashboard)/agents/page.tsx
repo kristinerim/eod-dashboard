@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCurrentProfile, isFullAdmin } from "@/lib/profile";
+import { getCurrentProfile, getRoster, isFullAdmin } from "@/lib/profile";
 import { ROLE_LABELS } from "@/lib/constants";
 import CreateAgentForm from "./CreateAgentForm";
 import UserActions from "./UserActions";
@@ -34,10 +34,12 @@ export default async function AgentsPage() {
     ])
   );
 
+  const rosterNames = (await getRoster()).map((r) => r.name);
   const existingAgentNames = (users ?? [])
     .filter((u) => u.role === "agent")
     .map((u) => u.agent_name)
     .filter((n): n is string => !!n);
+  const nameSuggestions = Array.from(new Set([...rosterNames, ...existingAgentNames])).sort();
 
   return (
     <div className="space-y-8">
@@ -50,7 +52,7 @@ export default async function AgentsPage() {
         </p>
       </div>
 
-      <CreateAgentForm existingAgentNames={existingAgentNames} />
+      <CreateAgentForm nameSuggestions={nameSuggestions} />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Existing users ({users?.length ?? 0})</h2>

@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { TEAM_MEMBERS, QUOTE_STATUS_LABELS, type QuoteStatus } from "@/lib/constants";
+import { QUOTE_STATUS_LABELS, type QuoteStatus } from "@/lib/constants";
+import { useRoster, withCurrent } from "@/components/RosterProvider";
 import { INTAKE_STEPS, buildIntakeSummary, intakeInitialFromRecord, type IntakeStepId } from "@/lib/intake";
 import { saveLead, createJobFromLead, type SaveLeadIntent } from "./lead-actions";
 import { CONTACT_REQUIRED_MESSAGE, hasValidContact } from "@/lib/contact";
@@ -51,7 +52,7 @@ export default function LeadForm({
   currentAgentName,
   startAtConvert,
 }: Props) {
-  const agentNames = agentOptions ?? TEAM_MEMBERS;
+  const roster = useRoster();
   const isLockedToSelf = currentRole === "agent";
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -224,7 +225,7 @@ export default function LeadForm({
                   <option value="" disabled>
                     Select agent
                   </option>
-                  {agentNames.map((n) => (
+                  {withCurrent(agentOptions ?? roster.agents, initial.agent).map((n) => (
                     <option key={n} value={n}>
                       {n}
                     </option>
@@ -232,7 +233,7 @@ export default function LeadForm({
                 </select>
               )}
             </Field>
-            <SelectField name="dispatcher" label="Dispatcher" values={initial} options={TEAM_MEMBERS} />
+            <SelectField name="dispatcher" label="Dispatcher" values={initial} options={roster.dispatchers} />
           </div>
 
           <IntakeShell

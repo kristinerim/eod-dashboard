@@ -63,6 +63,17 @@ export async function createUser(email: string, name: string, role: string): Pro
     return { error: profileError.message };
   }
 
+  // A new agent login also goes on the Agents & Dispatchers list, so their name
+  // shows up in the dropdowns without a second step. Anyone already listed
+  // (any capitalisation) is left exactly as they are.
+  const agentName = name.trim();
+  if (role === "agent" && agentName) {
+    const { data: listed } = await admin.from("team_roster").select("id, name");
+    if (!(listed ?? []).some((r) => r.name.toLowerCase() === agentName.toLowerCase())) {
+      await admin.from("team_roster").insert({ name: agentName, is_agent: true, is_dispatcher: false });
+    }
+  }
+
   revalidatePath("/agents");
   return { success: true, password };
 }

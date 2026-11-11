@@ -4,7 +4,6 @@ import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "r
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  TEAM_MEMBERS,
   PLATFORMS,
   PAYMENT_AUTH_STATUSES,
   PENDING_COMPLETION_STATUS,
@@ -17,6 +16,7 @@ import {
   intakeInitialFromRecord,
   type IntakeStepId,
 } from "@/lib/intake";
+import { useRoster, withCurrent } from "@/components/RosterProvider";
 import { autosaveVendorDispatch, createJob, saveCustomerPaymentStep, updateJob } from "./job-actions";
 import type { ContactedVendorRow } from "./job-fields";
 import type { Job } from "./JobsTable";
@@ -122,7 +122,8 @@ export default function JobForm({
   createdFromLead,
   startStep,
 }: Props) {
-  const agentNames = agentOptions ?? TEAM_MEMBERS;
+  const roster = useRoster();
+  const agentNames = agentOptions ?? roster.agents;
   const isLockedToSelf = currentRole === "agent";
   const isNewJob = !job;
   const router = useRouter();
@@ -773,7 +774,7 @@ export default function JobForm({
                     <option value="" disabled>
                       Select team member
                     </option>
-                    {agentNames.map((n) => (
+                    {withCurrent(agentNames, job?.agent ?? initial.agent).map((n) => (
                       <option key={n} value={n}>
                         {n}
                       </option>
@@ -788,7 +789,7 @@ export default function JobForm({
                   className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                 >
                   <option value="">-</option>
-                  {TEAM_MEMBERS.map((n) => (
+                  {withCurrent(roster.dispatchers, job?.dispatcher ?? initial.dispatcher).map((n) => (
                     <option key={n} value={n}>
                       {n}
                     </option>
@@ -983,7 +984,7 @@ export default function JobForm({
                   className="w-full rounded border border-black/20 px-2 py-1.5 text-sm"
                 >
                   <option value="">-</option>
-                  {TEAM_MEMBERS.map((n) => (
+                  {withCurrent(roster.dispatchers, job?.quoted_by_dispatcher).map((n) => (
                     <option key={n} value={n}>
                       {n}
                     </option>

@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { TEAM_MEMBERS, ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS } from "@/lib/constants";
 import { ALL_ROLES } from "@/lib/roles";
 import { createUser } from "./actions";
 
-export default function CreateAgentForm({ existingAgentNames = [] }: { existingAgentNames?: string[] }) {
-  const nameSuggestions = Array.from(new Set([...TEAM_MEMBERS, ...existingAgentNames])).sort();
+// `nameSuggestions` are the people already on the Agents & Dispatchers list, so a new login
+// can be matched to an existing name instead of retyping it.
+export default function CreateAgentForm({ nameSuggestions = [] }: { nameSuggestions?: string[] }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [email, setEmail] = useState("");

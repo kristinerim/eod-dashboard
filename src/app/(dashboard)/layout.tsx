@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
-import { getCurrentProfile, isFullAdmin } from "@/lib/profile";
+import { getAgentNameOptions, getCurrentProfile, getDispatcherNameOptions, isFullAdmin } from "@/lib/profile";
+import { RosterProvider } from "@/components/RosterProvider";
 import ClockInPrompt from "@/components/ClockInPrompt";
 import { signOut } from "./actions";
 
@@ -13,11 +14,13 @@ export default async function DashboardLayout({
   const user = await getCurrentUser();
 
   // The profile and the open-clock-in lookup don't depend on each other.
-  const [profile, openEntryResult] = await Promise.all([
+  const [profile, openEntryResult, agentNames, dispatcherNames] = await Promise.all([
     getCurrentProfile(),
     user
       ? supabase.from("time_entries").select("id").eq("user_id", user.id).is("clock_out", null).maybeSingle()
       : Promise.resolve(null),
+    getAgentNameOptions(),
+    getDispatcherNameOptions(),
   ]);
   const hasOpenEntry = user ? !!openEntryResult?.data : true;
 
@@ -56,6 +59,11 @@ export default async function DashboardLayout({
             Hours
           </Link>
           {isFullAdmin(profile?.role) && (
+            <Link href="/team" className="text-black/70 hover:text-black">
+              Agents &amp; Dispatchers
+            </Link>
+          )}
+          {isFullAdmin(profile?.role) && (
             <Link href="/agents" className="text-black/70 hover:text-black">
               Users
             </Link>
@@ -68,7 +76,11 @@ export default async function DashboardLayout({
           </form>
         </div>
       </header>
-      <main className="flex-1 px-6 py-6 print:p-0">{children}</main>
+      <main className="flex-1 px-6 py-6 print:p-0">
+        <RosterProvider agents={agentNames} dispatchers={dispatcherNames}>
+          {children}
+        </RosterProvider>
+      </main>
       {user && <ClockInPrompt hasOpenEntry={hasOpenEntry} />}
     </div>
   );
