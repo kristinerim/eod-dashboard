@@ -9,6 +9,7 @@ import { intakeFieldsFromForm, intakeInitialFromRecord } from "@/lib/intake";
 import { normalizeEmail, normalizeName, normalizePhone } from "@/lib/leadMatching";
 import { numberOrNull } from "@/lib/formParse";
 import { CONTACT_REQUIRED_MESSAGE, hasValidContact } from "@/lib/contact";
+import { linkLeadToCustomer } from "@/lib/customers";
 import { jobFieldsFromForm, strOrNull, upsertReportForDate } from "../reports/[id]/job-fields";
 
 type ActionResult = { success: true } | { error: string };
@@ -142,6 +143,8 @@ export async function saveLead(
   const { data, error } = await query.select("id, lead_number").single();
 
   if (error || !data) return { error: error?.message ?? "Failed to save the lead." };
+  // Every lead belongs to a customer record (found by phone, then email, or created).
+  await linkLeadToCustomer(data.id);
   revalidateLeads(data.id);
   return { success: true, id: data.id, leadNumber: data.lead_number };
 }

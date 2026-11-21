@@ -23,6 +23,7 @@ import {
 } from "./job-fields";
 import { findOrCreateLeadForJob } from "@/lib/leadMatching";
 import { numberOrNull } from "@/lib/formParse";
+import { linkLeadToCustomer } from "@/lib/customers";
 
 type ActionResult = { success: true; id?: string; reportId?: string } | { error: string };
 
@@ -254,6 +255,9 @@ export async function createJob(reportId: string, formData: FormData): Promise<A
       const { error: leadLinkError } = await supabase.from("leads").update({ job_id: inserted.id }).eq("id", explicitLeadId);
       if (leadLinkError) console.error(`Failed to link lead ${explicitLeadId} to job ${inserted.id}:`, leadLinkError.message);
     }
+    // The lead (picked, matched or newly made) belongs to a customer record too.
+    const linkedLeadId = explicitLeadId ?? ("leadId" in leadResult ? leadResult.leadId : null);
+    if (linkedLeadId) await linkLeadToCustomer(linkedLeadId);
     if ("leadId" in leadResult) {
       const { error: linkError } = await supabase
         .from("jobs")

@@ -67,38 +67,21 @@ export async function POST(request: Request) {
   }
 
   // ---- A reply (inbound email) ----
+  // The reply address carries the token of the message being answered, so the
+  // reply is filed exactly where that message went (its job, lead, customer and
+  // vendor). It is never matched by guessing from a phone number or email.
   const messageId = str(payload.MessageID);
-  const jobId = str(payload.MailboxHash);
+  const token = str(payload.MailboxHash);
   const fromFull = (payload.FromFull ?? {}) as { Email?: string; Name?: string };
   const fromEmail = (fromFull.Email || str(payload.From)).toLowerCase();
-  if (!messageId || !fromEmail || !UUID.test(jobId)) return NextResponse.json({ ok: true });
+  if (!messageId || !fromEmail || !UUID.test(token)) return NextResponse.json({ ok: true });
 
-  const { data: job } = await admin.from("jobs").select("id, client_email, customer_name").eq("id", jobId).maybeSingle();
-  if (!job) return NextResponse.json({ ok: true });
-
-  // Who is writing: the customer, one of the job's vendors, or someone else.
-  let partyType: "customer" | "vendor" | "other" = "other";
-  let partyName: string | null = fromFull.Name || null;
-  if ((job.client_email ?? "").toLowerCase() === fromEmail) {
-    partyType = "customer";
-    partyName = job.customer_name ?? partyName;
-  } else {
-    const { data: contacted } = await admin
-      .from("job_contacted_vendors")
-      .select("vendor_name, vendor_id")
-      .eq("job_id", jobId);
-    const ids = (contacted ?? []).map((c) => c.vendor_id).filter((v): v is string => !!v);
-    if (ids.length > 0) {
-      const { data: vendors } = await admin.from("vendors").select("id, name, email, secondary_email").in("id", ids);
-      const match = (vendors ?? []).find(
-        (v) => (v.email ?? "").toLowerCase() === fromEmail || (v.secondary_email ?? "").toLowerCase() === fromEmail
-      );
-      if (match) {
-        partyType = "vendor";
-        partyName = match.name;
-      }
-    }
-  }
+  const { data: original } = await admin
+    .from("communications")
+    .select("job_id, lead_id, customer_id, vendor_id, handled_by_name, party_type, party_name")
+    .eq("reply_token", token)
+    .maybeSingle();
+  if (!original) return NextResponse.json({ ok: true });
 
   const text = (str(payload.StrippedTextReply) || str(payload.TextBody) || str(payload.HtmlBody).replace(/<[^>]+>/g, " ")).trim();
   const subject = str(payload.Subject).slice(0, 300);
@@ -112,11 +95,15 @@ export async function POST(request: Request) {
 
   // Postmark retries until it gets a 200; the unique message id makes that harmless.
   await admin.from("communications").insert({
-    job_id: jobId,
+    job_id: original.job_id,
+    lead_id: original.lead_id,
+    customer_id: original.customer_id,
+    vendor_id: original.vendor_id,
+    handled_by_name: original.handled_by_name,
     channel: "email",
     direction: "inbound",
-    party_type: partyType,
-    party_name: partyName,
+    party_type: original.party_type,
+    party_name: original.party_name || fromFull.Name || null,
     from_address: fromEmail,
     to_address: str(payload.OriginalRecipient) || null,
     subject: subject || null,

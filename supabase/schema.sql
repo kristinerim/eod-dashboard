@@ -1613,3 +1613,123 @@ insert into message_templates (channel, audience, name, subject, body, sort_orde
  'Status check – Job {{job_number}}',
  E'Hello {{vendor_name}},\n\nCan you please confirm your current status and estimated arrival for Job {{job_number}} at {{pickup}}?\n\nThank you,\n{{agent_name}}\n{{company_name}} · {{company_phone}}', 30)
 on conflict do nothing;
+
+-- Communication structure: customers, and messages linked to customer/lead/job/vendor
+-- Communication structure: a real Customer record, and every message linked to
+-- the right customer, lead, job and vendor (each message stored once).
+-- Safe to run more than once.
+
+-- 1. Customers -----------------------------------------------------------------
+-- One row per customer, identified by phone number (10+ digits), or by email when
+-- there is no usable phone. Leads and messages point at it.
+create table if not exists customers (
+  id uuid primary key default gen_random_uuid(),
+  name text,
+  company text,
+  phone text,
+  phone_normalized text,
+  email text,
+  email_normalized text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists customers_phone_idx on customers (phone_normalized) where phone_normalized is not null;
+create index if not exists customers_email_idx on customers (email_normalized);
+create index if not exists customers_name_idx on customers (lower(name));
+
+alter table leads add column if not exists customer_id uuid references customers(id) on delete set null;
+create index if not exists leads_customer_id_idx on leads (customer_id);
+
+alter table customers enable row level security;
+do $$
+begin
+  -- Supervisors see every customer; an agent sees the customers they have leads for.
+  -- Customers are created and updated only by the Hub's server, never directly.
+  if not exists (select 1 from pg_policies where tablename = 'customers' and policyname = 'staff can read their customers') then
+    create policy "staff can read their customers" on customers for select to authenticated
+      using (is_supervisor() or exists (select 1 from leads l where l.customer_id = customers.id and l.agent = current_agent_name()));
+  end if;
+end $$;
+
+
+-- Existing leads -> customers. First everyone with a usable phone number...
+insert into customers (name, company, phone, phone_normalized, email, email_normalized)
+select distinct on (l.phone_normalized)
+  l.customer_name, l.client_company_name, l.customer_phone, l.phone_normalized, l.email, l.email_normalized
+from leads l
+where l.phone_normalized is not null and length(l.phone_normalized) >= 10
+order by l.phone_normalized, l.created_at desc
+on conflict do nothing;
+
+-- ...then people reachable only by email.
+insert into customers (name, company, email, email_normalized)
+select distinct on (l.email_normalized)
+  l.customer_name, l.client_company_name, l.email, l.email_normalized
+from leads l
+where (l.phone_normalized is null or length(l.phone_normalized) < 10)
+  and l.email_normalized is not null
+  and not exists (select 1 from customers c where c.email_normalized = l.email_normalized)
+order by l.email_normalized, l.created_at desc;
+
+update leads l set customer_id = c.id
+from customers c
+where l.customer_id is null
+  and l.phone_normalized is not null and length(l.phone_normalized) >= 10
+  and c.phone_normalized = l.phone_normalized;
+
+update leads l set customer_id = c.id
+from (select distinct on (email_normalized) id, email_normalized from customers where email_normalized is not null order by email_normalized, created_at) c
+where l.customer_id is null
+  and l.email_normalized is not null
+  and c.email_normalized = l.email_normalized;
+
+-- 2. Messages: link to customer, lead, job and vendor --------------------------
+-- A message used to belong to a job only. Now it is stored once and can be linked
+-- to several of these at the same time. A job being deleted no longer deletes
+-- the correspondence.
+alter table communications alter column job_id drop not null;
+alter table communications drop constraint if exists communications_job_id_fkey;
+alter table communications add constraint communications_job_id_fkey
+  foreign key (job_id) references jobs(id) on delete set null;
+
+alter table communications add column if not exists lead_id uuid references leads(id) on delete set null;
+alter table communications add column if not exists customer_id uuid references customers(id) on delete set null;
+alter table communications add column if not exists vendor_id uuid references vendors(id) on delete set null;
+-- The agent responsible for the job or lead the message belongs to.
+alter table communications add column if not exists handled_by_name text;
+-- Unique per message. A reply to it carries this token, so the reply is filed
+-- exactly where the original went (never guessed from a phone number or email).
+alter table communications add column if not exists reply_token uuid not null default gen_random_uuid();
+
+create unique index if not exists communications_reply_token_idx on communications (reply_token);
+create index if not exists communications_lead_idx on communications (lead_id, created_at);
+create index if not exists communications_customer_idx on communications (customer_id, created_at);
+create index if not exists communications_vendor_idx on communications (vendor_id, created_at);
+
+-- 3. Who can read and send ------------------------------------------------------
+drop policy if exists "job viewers can read communications" on communications;
+drop policy if exists "staff can record their own sent messages" on communications;
+drop policy if exists "staff can read the communications they work with" on communications;
+
+create policy "staff can read the communications they work with" on communications for select to authenticated
+  using (
+    is_supervisor()
+    or sent_by = auth.uid()
+    or (job_id is not null and exists (select 1 from jobs j where j.id = communications.job_id and j.agent = current_agent_name()))
+    or (lead_id is not null and exists (select 1 from leads l where l.id = communications.lead_id and l.agent = current_agent_name()))
+    or (customer_id is not null and exists (select 1 from leads l where l.customer_id = communications.customer_id and l.agent = current_agent_name()))
+  );
+
+-- Staff can only record messages as themselves, and only about work they can access.
+-- Status changes and incoming replies are written by the server itself.
+create policy "staff can record their own sent messages" on communications for insert to authenticated
+  with check (
+    direction = 'outbound' and sent_by = auth.uid()
+    and (
+      is_supervisor()
+      or (job_id is not null and exists (select 1 from jobs j where j.id = communications.job_id and j.agent = current_agent_name()))
+      or (lead_id is not null and exists (select 1 from leads l where l.id = communications.lead_id and l.agent = current_agent_name()))
+      or (customer_id is not null and exists (select 1 from leads l where l.customer_id = communications.customer_id and l.agent = current_agent_name()))
+      or (job_id is null and lead_id is null and customer_id is null and vendor_id is not null)
+    )
+  );

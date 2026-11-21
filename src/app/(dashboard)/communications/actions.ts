@@ -6,25 +6,89 @@ import { getCurrentProfile } from "@/lib/profile";
 import { containsCardNumber, emailFooter } from "@/lib/communications";
 import { isValidEmail } from "@/lib/contact";
 import { emailConfig, sendEmail } from "@/lib/email/send";
+import type { MessageContext } from "@/components/communications/types";
 
-export type SendJobEmailInput = {
-  jobId: string;
+export type SendEmailInput = {
+  // Where the message is being written from. The server works out the rest of
+  // the links (a job's lead and customer, a lead's customer) from the database.
+  context: MessageContext;
   partyType: "customer" | "vendor";
   partyName: string;
   to: string;
   subject: string;
   body: string;
   templateId?: string | null;
-  // Created once when the message is started. Sending the same key twice —
-  // a double click, a retry, two windows — can only ever send one email.
+  // Created once when the message is started. Sending the same key twice — a
+  // double click, a retry, two windows — can only ever send one email.
   idempotencyKey: string;
 };
 
-export type SendJobEmailResult =
+export type SendEmailResult =
   | { success: true; id: string; status: string; duplicate?: boolean }
   | { error: string };
 
-export async function sendJobEmail(input: SendJobEmailInput): Promise<SendJobEmailResult> {
+type Links = {
+  jobId: string | null;
+  leadId: string | null;
+  customerId: string | null;
+  vendorId: string | null;
+  handledBy: string | null;
+};
+
+// Turns "written from this screen" into the full set of links, reading with the
+// signed-in user's own access first so nobody can attach a message to a job,
+// lead or customer they aren't allowed to see.
+async function resolveLinks(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ctx: MessageContext,
+  partyType: "customer" | "vendor"
+): Promise<{ error: string } | Links> {
+  const admin = createAdminClient();
+  let jobId: string | null = null;
+  let leadId: string | null = null;
+  let customerId: string | null = null;
+  let handledBy: string | null = null;
+
+  if (ctx.jobId) {
+    const { data: job } = await supabase.from("jobs").select("id, lead_id, agent").eq("id", ctx.jobId).maybeSingle();
+    if (!job) return { error: "You don't have access to this job." };
+    jobId = job.id;
+    leadId = job.lead_id;
+    handledBy = job.agent;
+  } else if (ctx.leadId) {
+    const { data: lead } = await supabase.from("leads").select("id, agent, customer_id").eq("id", ctx.leadId).maybeSingle();
+    if (!lead) return { error: "You don't have access to this lead." };
+    leadId = lead.id;
+    customerId = lead.customer_id;
+    handledBy = lead.agent;
+  } else if (ctx.customerId) {
+    const { data: customer } = await supabase.from("customers").select("id").eq("id", ctx.customerId).maybeSingle();
+    if (!customer) return { error: "You don't have access to this customer." };
+    customerId = customer.id;
+  }
+
+  // A job's customer is its lead's customer (read after access to the job was proven).
+  if (jobId && leadId && !customerId) {
+    const { data: lead } = await admin.from("leads").select("customer_id").eq("id", leadId).maybeSingle();
+    customerId = lead?.customer_id ?? null;
+  }
+
+  let vendorId: string | null = null;
+  if (partyType === "vendor") {
+    if (ctx.vendorId) {
+      const { data: vendor } = await supabase.from("vendors").select("id").eq("id", ctx.vendorId).maybeSingle();
+      if (!vendor) return { error: "That vendor no longer exists." };
+      vendorId = vendor.id;
+    }
+    // A vendor message is not part of the customer's own correspondence.
+    customerId = null;
+  }
+
+  if (!jobId && !leadId && !customerId && !vendorId) return { error: "This message isn't connected to anything." };
+  return { jobId, leadId, customerId, vendorId, handledBy };
+}
+
+export async function sendEmailMessage(input: SendEmailInput): Promise<SendEmailResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -46,11 +110,10 @@ export async function sendJobEmail(input: SendJobEmailInput): Promise<SendJobEma
   if (containsCardNumber(`${subject}\n${body}`)) {
     return { error: "This message looks like it contains a card number. Card numbers must never be sent by email — remove it." };
   }
-  if (!emailConfig()) return { error: "Email isn't connected yet. An admin needs to finish the email setup." };
+  if (!emailConfig()) return { error: "Email isn't connected yet, so nothing can be sent." };
 
-  // ---- Only people who can work on this job may email about it ----
-  const { data: job } = await supabase.from("jobs").select("id").eq("id", input.jobId).maybeSingle();
-  if (!job) return { error: "You don't have access to this job." };
+  const links = await resolveLinks(supabase, input.context ?? {}, input.partyType);
+  if ("error" in links) return links;
 
   const admin = createAdminClient();
 
@@ -71,7 +134,11 @@ export async function sendJobEmail(input: SendJobEmailInput): Promise<SendJobEma
   const { data: created, error: insertError } = await supabase
     .from("communications")
     .insert({
-      job_id: input.jobId,
+      job_id: links.jobId,
+      lead_id: links.leadId,
+      customer_id: links.customerId,
+      vendor_id: links.vendorId,
+      handled_by_name: links.handledBy,
       channel: "email",
       direction: "outbound",
       party_type: input.partyType,
@@ -85,7 +152,7 @@ export async function sendJobEmail(input: SendJobEmailInput): Promise<SendJobEma
       template_id: input.templateId || null,
       idempotency_key: key,
     })
-    .select("id")
+    .select("id, reply_token")
     .single();
 
   if (insertError || !created) {
@@ -101,9 +168,9 @@ export async function sendJobEmail(input: SendJobEmailInput): Promise<SendJobEma
     return { error: insertError?.message ?? "Couldn't record the message." };
   }
 
-  // ---- Send it ----
+  // ---- Send it. A reply to this address is filed exactly where this message went ----
   const config = emailConfig();
-  const replyTo = config?.replyDomain ? `reply+${input.jobId}@${config.replyDomain}` : undefined;
+  const replyTo = config?.replyDomain ? `reply+${created.reply_token}@${config.replyDomain}` : undefined;
   const result = await sendEmail({ to, subject, text: fullBody, replyTo, communicationId: created.id });
 
   if (!result.ok) {

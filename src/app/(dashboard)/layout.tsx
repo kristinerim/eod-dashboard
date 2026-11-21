@@ -46,6 +46,9 @@ export default async function DashboardLayout({
           <Link href="/cancelled-jobs" className="text-black/70 hover:text-black">
             Cancelled
           </Link>
+          <Link href="/customers" className="text-black/70 hover:text-black">
+            Customers
+          </Link>
           <Link href="/invoices" className="text-black/70 hover:text-black">
             Invoices
           </Link>

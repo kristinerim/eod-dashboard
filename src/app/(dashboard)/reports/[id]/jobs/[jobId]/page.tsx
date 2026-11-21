@@ -12,7 +12,9 @@ import JobInvoicesSection from "./JobInvoicesSection";
 import JobNotesSection, { type JobNote } from "./JobNotesSection";
 import RealtimeRefresh from "@/components/RealtimeRefresh";
 import { emailConfig } from "@/lib/email/send";
-import JobCommunications, { type CommunicationRow, type TemplateRow, type VendorContact } from "./JobCommunications";
+import CommunicationPanel from "@/components/communications/CommunicationPanel";
+import type { Recipient, TemplateRow } from "@/components/communications/types";
+import { loadCommunications } from "@/lib/communicationsLoader";
 
 function formatCurrency(n: number | null) {
   if (n === null) return "-";
@@ -100,12 +102,8 @@ export default async function JobDetailPage({
   // Everything for the Communications section: this job's messages (the database
   // limits them to people who can see the job), the email templates, and the
   // email addresses of the vendors on the job.
-  const [{ data: communications }, { data: templates }] = await Promise.all([
-    supabase
-      .from("communications")
-      .select("id, channel, direction, party_type, party_name, from_address, to_address, subject, body, status, status_detail, sent_by_name, created_at")
-      .eq("job_id", jobId)
-      .order("created_at", { ascending: true }),
+  const [communications, { data: templates }] = await Promise.all([
+    loadCommunications(supabase, { kind: "job", jobId, leadId: job.lead_id ?? null }),
     supabase
       .from("message_templates")
       .select("id, audience, name, subject, body")
@@ -114,21 +112,35 @@ export default async function JobDetailPage({
       .order("sort_order"),
   ]);
   const vendorIds = (contactedVendors ?? []).map((v) => v.vendor_id).filter((x): x is string => !!x);
-  const { data: vendorEmails } = vendorIds.length
-    ? await supabase.from("vendors").select("id, email, secondary_email").in("id", vendorIds)
-    : { data: [] as { id: string; email: string | null; secondary_email: string | null }[] };
-  const emailByVendor = new Map((vendorEmails ?? []).map((v) => [v.id, v]));
-  const vendorContacts: VendorContact[] = (contactedVendors ?? []).map((v) => {
-    const e = v.vendor_id ? emailByVendor.get(v.vendor_id) : undefined;
-    return {
-      name: v.vendor_name ?? "Vendor",
-      email: e?.email ?? null,
-      secondaryEmail: e?.secondary_email ?? null,
-      quote: v.quote_amount !== null ? formatCurrency(v.quote_amount) : "",
-      eta: v.eta_given ?? "",
-      isGo: v.status === "go",
-    };
-  });
+  const { data: vendorContactRows } = vendorIds.length
+    ? await supabase.from("vendors").select("id, email, secondary_email, phone").in("id", vendorIds)
+    : { data: [] as { id: string; email: string | null; secondary_email: string | null; phone: string | null }[] };
+  const contactByVendor = new Map((vendorContactRows ?? []).map((v) => [v.id, v]));
+  const recipients: Recipient[] = [
+    {
+      id: "customer",
+      label: "Customer",
+      partyType: "customer",
+      name: job.customer_name ?? "",
+      email: job.client_email ?? null,
+      phone: job.customer_phone ?? null,
+    },
+    ...(contactedVendors ?? []).map((v, i): Recipient => {
+      const c = v.vendor_id ? contactByVendor.get(v.vendor_id) : undefined;
+      return {
+        id: `vendor-${i}`,
+        label: "Vendor",
+        partyType: "vendor",
+        name: v.vendor_name ?? "Vendor",
+        email: c?.email ?? c?.secondary_email ?? null,
+        phone: c?.phone ?? v.phone_number ?? null,
+        vendorId: v.vendor_id ?? null,
+        quote: v.quote_amount !== null ? formatCurrency(v.quote_amount) : "",
+        eta: v.eta_given ?? "",
+        isGo: v.status === "go",
+      };
+    }),
+  ];
   const pickup = [job.service_street_address, job.service_city, [job.state, job.service_zip].filter(Boolean).join(" ")]
     .filter(Boolean)
     .join(", ");
@@ -442,15 +454,17 @@ export default async function JobDetailPage({
       />
 
       <RealtimeRefresh tables={["communications"]} />
-      <JobCommunications
-        jobId={jobId}
-        communications={(communications ?? []) as CommunicationRow[]}
+      <CommunicationPanel
+        context={{ jobId }}
+        rows={communications}
+        recipients={recipients}
+        emailConnected={emailConfig() !== null}
+        smsConnected={false}
         templates={(templates ?? []) as TemplateRow[]}
-        customer={{ name: job.customer_name ?? "", email: job.client_email ?? null }}
-        vendors={vendorContacts}
         mergeBase={mergeBase}
         invoices={(invoices ?? []).map((i) => ({ number: (i.invoice_number as string | null) ?? null, token: i.signature_token as string }))}
-        emailEnabled={emailConfig() !== null}
+        showLinks
+        note="Includes the messages sent while this was still a lead. Customer and vendor messages for this job are kept together here."
       />
     </div>
   );

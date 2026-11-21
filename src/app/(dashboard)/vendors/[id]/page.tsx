@@ -7,6 +7,10 @@ import { TIER_LABELS, TIER_RULES, type Vendor, type VendorTier } from "@/lib/ven
 import { TierBadge } from "../TierBadge";
 import VendorEditForm from "./VendorEditForm";
 import VendorTierForm from "./VendorTierForm";
+import CommunicationPanel from "@/components/communications/CommunicationPanel";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
+import { emailConfig } from "@/lib/email/send";
+import { loadCommunications } from "@/lib/communicationsLoader";
 
 const SOURCE_LABEL: Record<string, string> = {
   map: "Google My Maps (as exported)",
@@ -46,6 +50,7 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
   }
 
   const dnc = vendor.tier === "dnc_tier_3";
+  const communications = await loadCommunications(supabase, { kind: "vendor", vendorId: id });
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -102,6 +107,27 @@ export default async function VendorDetailPage({ params }: { params: Promise<{ i
           ))}
         </div>
       </div>
+
+      <RealtimeRefresh tables={["communications"]} />
+      <CommunicationPanel
+        context={{ vendorId: id }}
+        rows={communications}
+        recipients={[
+          {
+            id: "vendor",
+            label: "Vendor",
+            partyType: "vendor",
+            name: vendor.name,
+            email: vendor.email ?? vendor.secondary_email ?? null,
+            phone: vendor.phone ?? null,
+            vendorId: id,
+          },
+        ]}
+        emailConnected={emailConfig() !== null}
+        smsConnected={false}
+        showLinks
+        note="Everything exchanged with this vendor, including messages about each job they were contacted for."
+      />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold">Tier history</h2>

@@ -7,6 +7,10 @@ import LeadDetailActions from "../LeadDetailActions";
 import { QUOTE_STATUS_LABELS, type QuoteStatus } from "@/lib/constants";
 import { JOB_DETAIL_FIELD_DEFS } from "@/lib/jobTypeFields";
 import { composeDropOffLocation, jobTypeNeedsDropOff, stepFieldKeys } from "@/lib/intake";
+import CommunicationPanel from "@/components/communications/CommunicationPanel";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
+import { emailConfig } from "@/lib/email/send";
+import { loadCommunications } from "@/lib/communicationsLoader";
 
 function formatDateTime(d: string | null) {
   if (!d) return "-";
@@ -42,13 +46,24 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const profile = await getCurrentProfile();
   const canDelete = isSupervisor(profile?.role);
   const agentOptions = await getAgentNameOptions();
+  // Messages sent from this lead (before it became a job) stay on it.
+  const communications = await loadCommunications(supabase, { kind: "lead", leadId: id });
 
   const fields: { label: string; value: React.ReactNode }[] = [
     { label: "Lead #", value: lead.lead_number },
     { label: "Status", value: lead.status },
     { label: "Agent", value: lead.agent ?? "-" },
     { label: "Dispatcher", value: lead.dispatcher ?? "-" },
-    { label: "Customer name", value: lead.customer_name ?? "-" },
+    {
+      label: "Customer name",
+      value: lead.customer_id ? (
+        <Link href={`/customers/${lead.customer_id}`} className="underline">
+          {lead.customer_name ?? "Customer profile"} — view profile
+        </Link>
+      ) : (
+        (lead.customer_name ?? "-")
+      ),
+    },
     { label: "Company", value: lead.client_company_name ?? "-" },
     {
       label: "Customer phone",
@@ -234,6 +249,26 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           )}
         </div>
       </div>
+
+      <RealtimeRefresh tables={["communications"]} />
+      <CommunicationPanel
+        context={{ leadId: id }}
+        rows={communications}
+        recipients={[
+          {
+            id: "customer",
+            label: "Customer",
+            partyType: "customer",
+            name: lead.customer_name ?? "",
+            email: lead.email ?? null,
+            phone: lead.customer_phone ?? null,
+          },
+        ]}
+        emailConnected={emailConfig() !== null}
+        smsConnected={false}
+        showLinks
+        note="Follow-ups sent from this lead are recorded here and on the customer's profile, so you can see who has already been contacted. Once the lead becomes a job, messages for the job are kept on the job."
+      />
     </div>
   );
 }
