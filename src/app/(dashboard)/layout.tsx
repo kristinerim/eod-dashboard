@@ -43,13 +43,13 @@ export default async function DashboardLayout({
   };
 
   return (
-    <>
+    <div className="qt-zoom flex flex-1 flex-col">
       <AppShell user={shellUser} unreadCount={unreadCount} initialCollapsed={initialCollapsed} signOutAction={signOut}>
         <RosterProvider agents={agentNames} dispatchers={dispatcherNames}>
           {children}
         </RosterProvider>
       </AppShell>
       {user && <ClockInPrompt hasOpenEntry={hasOpenEntry} />}
-    </>
+    </div>
   );
 }

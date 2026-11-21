@@ -136,6 +136,11 @@ export default async function DashboardPage() {
   const idsBetween = (start: string, end: string) =>
     reports.filter((r) => r.report_date >= start && r.report_date <= end).map((r) => r.id);
 
+  // The Reports list shows only this week's days (Sunday through Saturday) that have jobs.
+  const thisWeekReports = reports.filter(
+    (r) => r.report_date >= weekStart && r.report_date <= weekEnd && (summaryByReport.get(r.id)?.job_count ?? 0) > 0
+  );
+
   const todayTotals = totalsFor(reports.filter((r) => r.report_date === today).map((r) => r.id));
   const incompleteToday = todayTotals.open;
   const incompleteWeek = totalsFor(idsBetween(weekStart, weekEnd)).open;
@@ -201,7 +206,9 @@ export default async function DashboardPage() {
 
       <section className="overflow-hidden rounded-xl border border-qt-line bg-white">
         <div className="flex items-center gap-2.5 border-b border-qt-line px-5 py-3.5">
-          <h2 className="flex-1 text-[15px] font-bold">Reports</h2>
+          <h2 className="flex-1 text-[15px] font-bold">
+            Reports <span className="font-normal text-qt-muted">· this week, Sunday to Saturday</span>
+          </h2>
           <Link href="/weekly" className="text-[13px] font-medium text-qt-accent hover:underline">
             View weekly summaries
           </Link>
@@ -216,8 +223,14 @@ export default async function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {reports
-                .filter((r) => (summaryByReport.get(r.id)?.job_count ?? 0) > 0)
+              {thisWeekReports.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-5 py-6 text-center text-qt-muted">
+                    No jobs yet this week.
+                  </td>
+                </tr>
+              )}
+              {thisWeekReports
                 .map((r) => {
                   const s = summaryByReport.get(r.id)!;
                   return (

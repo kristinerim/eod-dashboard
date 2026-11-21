@@ -241,7 +241,7 @@ export function ProfilePanel({
     "flex h-10 w-full items-center justify-center rounded-lg border border-[#c9d1dc] bg-white text-sm font-semibold hover:bg-qt-canvas";
 
   return (
-    <div role="dialog" aria-label="User profile" className={`${PANEL} max-h-[min(680px,calc(100vh-5rem))] overflow-y-auto`}>
+    <div role="dialog" aria-label="User profile" className={`${PANEL} max-h-[min(680px,calc(100vh/var(--qt-zoom)-5rem))] overflow-y-auto`}>
       <div className="flex items-center gap-3.5 p-4">
         <Avatar initials={user.initials} size={48} />
         <span className="flex min-w-0 flex-1 flex-col gap-1">

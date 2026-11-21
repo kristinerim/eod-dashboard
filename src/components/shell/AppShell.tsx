@@ -200,9 +200,9 @@ export default function AppShell({
   };
 
   return (
-    <div className="flex min-h-screen flex-1 bg-white text-qt-ink">
+    <div className="flex min-h-[calc(100vh/var(--qt-zoom))] flex-1 bg-white text-qt-ink">
       <aside
-        className={`sticky top-0 flex h-screen shrink-0 flex-col gap-1 overflow-y-auto border-r border-qt-line bg-white px-3 py-4 transition-[width] duration-200 print:hidden ${
+        className={`sticky top-0 flex h-[calc(100vh/var(--qt-zoom))] shrink-0 flex-col gap-1 overflow-y-auto border-r border-qt-line bg-white px-3 py-4 transition-[width] duration-200 print:hidden ${
           collapsed ? "w-[76px]" : "w-[76px] md:w-64"
         }`}
       >

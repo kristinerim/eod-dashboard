@@ -3,6 +3,18 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* How large the signed-in app is drawn: 0.75 = 75%, like zooming the browser out. */
+  --qt-zoom: 0.75;
+}
+
+.qt-zoom {
+  zoom: var(--qt-zoom);
+}
+
+@media print {
+  .qt-zoom {
+    zoom: 1;
+  }
 }
 
 @theme inline {
