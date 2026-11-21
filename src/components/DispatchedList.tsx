@@ -23,9 +23,11 @@ interface Props {
   jobs: DispatchedJob[];
   limit?: number;
   viewAllHref?: string;
+  // Drop the outer border when the list already sits inside a card.
+  bare?: boolean;
 }
 
-export default function DispatchedList({ jobs, limit, viewAllHref }: Props) {
+export default function DispatchedList({ jobs, limit, viewAllHref, bare }: Props) {
   const sorted = useMemo(() => {
     return [...jobs]
       .map((j) => ({ job: j, deadline: etaDeadline(j) }))
@@ -45,7 +47,7 @@ export default function DispatchedList({ jobs, limit, viewAllHref }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="overflow-hidden rounded-lg border border-black/10">
+      <div className={bare ? "overflow-x-auto" : "overflow-hidden rounded-lg border border-black/10"}>
         <table className="w-full text-sm">
           <thead className="bg-black/5 text-left">
             <tr>

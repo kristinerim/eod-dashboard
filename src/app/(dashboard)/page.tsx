@@ -41,9 +41,9 @@ interface ReportSummary {
 
 function Card({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border border-black/10 p-3">
-      <div className="text-xs text-black/50">{label}</div>
-      <div className="mt-1 text-base font-semibold">{value}</div>
+    <div className="rounded-xl border border-qt-line bg-white px-5 py-4">
+      <div className="text-[13px] font-medium text-qt-muted">{label}</div>
+      <div className="mt-1 text-[28px] font-bold tracking-tight">{value}</div>
     </div>
   );
 }
@@ -99,13 +99,8 @@ export default async function DashboardPage() {
   if (!reports || reports.length === 0) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Link href="/leads" className="text-sm text-black/60 underline hover:text-black">
-            New inquiry? Create a lead
-          </Link>
-          <AddTodayJobButton />
-        </div>
-        <p className="text-sm text-black/70">No reports yet. Add today&apos;s first job above.</p>
+        <AddTodayJobButton />
+        <p className="text-sm text-black/70">No reports yet. Add today&apos;s first job above, or use Create Job in the menu.</p>
       </div>
     );
   }
@@ -153,20 +148,15 @@ export default async function DashboardPage() {
   const refundRequiredJobs: RefundRequiredJob[] = cancelledData.filter((j) => needsRefund(j));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <RealtimeRefresh tables={["jobs", "reports"]} />
 
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">Today — {formatDate(today)}</h1>
-        <div className="flex items-center gap-3">
-          <Link href="/leads" className="text-sm text-black/60 underline hover:text-black">
-            New inquiry? Create a lead
-          </Link>
-          <AddTodayJobButton />
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold">Today</h1>
+        <p className="mt-0.5 text-sm text-qt-muted">{formatDate(today)}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
         <Card label="Profit" value={formatCurrency(todayTotals.profit)} />
         <Card label="Jobs" value={todayTotals.jobs} />
         <Card label="Job amount" value={formatCurrency(todayTotals.amount)} />
@@ -177,41 +167,52 @@ export default async function DashboardPage() {
 
       <NeedsAttentionList jobs={needsAttentionJobs} />
 
-      <div>
-        <h2 className="mb-2 text-sm font-semibold">Incomplete jobs</h2>
-        <div className="grid grid-cols-3 gap-3">
-          <Card label="Today" value={incompleteToday} />
-          <Card label="This week" value={incompleteWeek} />
-          <Card label="This month" value={incompleteMonth} />
-        </div>
-      </div>
-
-      {dispatchedJobs.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Dispatched — nearing ETA</h2>
-            <Link href="/dispatched" className="text-sm underline">
+      <div className="flex flex-wrap items-start gap-4">
+        <section className="min-w-0 flex-[2_1_620px] overflow-hidden rounded-xl border border-qt-line bg-white">
+          <div className="flex items-center gap-2.5 border-b border-qt-line px-5 py-3.5">
+            <h2 className="flex-1 text-[15px] font-bold">Dispatched — nearing ETA</h2>
+            <Link href="/dispatched" className="text-[13px] font-medium text-qt-accent hover:underline">
               View all dispatched
             </Link>
           </div>
-          <DispatchedList jobs={dispatchedJobs} limit={10} viewAllHref="/dispatched" />
-        </div>
-      )}
+          {dispatchedJobs.length > 0 ? (
+            <DispatchedList jobs={dispatchedJobs} limit={10} viewAllHref="/dispatched" bare />
+          ) : (
+            <p className="px-5 py-6 text-sm text-qt-muted">No dispatched jobs with an ETA right now.</p>
+          )}
+        </section>
 
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Reports</h2>
-          <Link href="/weekly" className="text-sm underline">
+        <section className="min-w-0 flex-[1_1_260px] overflow-hidden rounded-xl border border-qt-line bg-white">
+          <div className="border-b border-qt-line px-5 py-3.5">
+            <h2 className="text-[15px] font-bold">Incomplete jobs</h2>
+          </div>
+          {[
+            ["Today", incompleteToday],
+            ["This week", incompleteWeek],
+            ["This month", incompleteMonth],
+          ].map(([label, value]) => (
+            <div key={label} className="flex items-baseline border-t border-[#eef1f5] px-5 py-4 first:border-t-0">
+              <span className="flex-1 text-sm text-[#2b3646]">{label}</span>
+              <span className="text-[26px] font-bold">{value}</span>
+            </div>
+          ))}
+        </section>
+      </div>
+
+      <section className="overflow-hidden rounded-xl border border-qt-line bg-white">
+        <div className="flex items-center gap-2.5 border-b border-qt-line px-5 py-3.5">
+          <h2 className="flex-1 text-[15px] font-bold">Reports</h2>
+          <Link href="/weekly" className="text-[13px] font-medium text-qt-accent hover:underline">
             View weekly summaries
           </Link>
         </div>
-        <div className="overflow-hidden rounded-lg border border-black/10">
-          <table className="w-full text-sm">
-            <thead className="bg-black/5 text-left">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead className="bg-[#f7f9fb] text-left text-xs uppercase tracking-wide text-qt-muted">
               <tr>
-                <th className="px-4 py-2 font-medium">Date</th>
-                <th className="px-4 py-2 font-medium">Profit</th>
-                <th className="px-4 py-2 font-medium">Jobs</th>
+                <th className="px-5 py-2.5 font-semibold">Date</th>
+                <th className="px-5 py-2.5 font-semibold">Profit</th>
+                <th className="px-5 py-2.5 font-semibold">Jobs</th>
               </tr>
             </thead>
             <tbody>
@@ -220,26 +221,26 @@ export default async function DashboardPage() {
                 .map((r) => {
                   const s = summaryByReport.get(r.id)!;
                   return (
-                    <tr key={r.id} className="border-t border-black/10 hover:bg-black/[0.03]">
-                      <td className="px-4 py-2">
-                        <Link href={`/reports/${r.id}`} className="underline">
+                    <tr key={r.id} className="border-t border-[#eef1f5] hover:bg-[#f7f9fb]">
+                      <td className="px-5 py-3">
+                        <Link href={`/reports/${r.id}`} className="font-medium text-qt-accent hover:underline">
                           {formatDate(r.report_date)}
                         </Link>
                         {r.report_date === today && (
-                          <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                          <span className="ml-2 rounded-full bg-[#e3f6ea] px-2.5 py-0.5 text-xs font-semibold text-[#146c3a]">
                             Today
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-2">{formatCurrency(s.total_profit)}</td>
-                      <td className="px-4 py-2">{s.job_count}</td>
+                      <td className="px-5 py-3 font-semibold">{formatCurrency(s.total_profit)}</td>
+                      <td className="px-5 py-3">{s.job_count}</td>
                     </tr>
                   );
                 })}
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -1,9 +1,18 @@
-import Link from "next/link";
+import { cookies } from "next/headers";
 import { createClient, getCurrentUser } from "@/lib/supabase/server";
-import { getAgentNameOptions, getCurrentProfile, getDispatcherNameOptions, isFullAdmin } from "@/lib/profile";
+import { getAgentNameOptions, getCurrentProfile, getDispatcherNameOptions } from "@/lib/profile";
+import { ROLE_MENU_LABELS } from "@/lib/roles";
 import { RosterProvider } from "@/components/RosterProvider";
 import ClockInPrompt from "@/components/ClockInPrompt";
+import AppShell from "@/components/shell/AppShell";
 import { signOut } from "./actions";
+import { getUnreadCount } from "./shell-actions";
+
+function initialsFor(name: string): string {
+  const parts = name.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  return (parts.length === 1 ? parts[0].slice(0, 2) : parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 export default async function DashboardLayout({
   children,
@@ -12,79 +21,35 @@ export default async function DashboardLayout({
 }) {
   const supabase = await createClient();
   const user = await getCurrentUser();
+  const initialCollapsed = (await cookies()).get("qthub-sidebar")?.value === "collapsed";
 
-  // The profile and the open-clock-in lookup don't depend on each other.
-  const [profile, openEntryResult, agentNames, dispatcherNames] = await Promise.all([
+  // The profile, the open-clock-in lookup and the unread count don't depend on each other.
+  const [profile, openEntryResult, agentNames, dispatcherNames, unreadCount] = await Promise.all([
     getCurrentProfile(),
     user
       ? supabase.from("time_entries").select("id").eq("user_id", user.id).is("clock_out", null).maybeSingle()
       : Promise.resolve(null),
     getAgentNameOptions(),
     getDispatcherNameOptions(),
+    getUnreadCount(),
   ]);
   const hasOpenEntry = user ? !!openEntryResult?.data : true;
 
+  const displayName = profile?.agent_name || user?.email || "Signed in";
+  const shellUser = {
+    name: displayName,
+    initials: initialsFor(displayName),
+    roleLabel: (profile?.role && ROLE_MENU_LABELS[profile.role]) || "Team member",
+  };
+
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-black/10 px-6 py-3 print:hidden">
-        <Link href="/" className="text-sm font-semibold">
-          EOD Report Dashboard
-        </Link>
-        <div className="flex items-center gap-4 text-sm">
-          <Link href="/leads" className="text-black/70 hover:text-black">
-            Leads
-          </Link>
-          <Link href="/dispatched" className="text-black/70 hover:text-black">
-            Dispatched
-          </Link>
-          <Link href="/pending-completion" className="text-black/70 hover:text-black">
-            DPA
-          </Link>
-          <Link href="/completed-jobs" className="text-black/70 hover:text-black">
-            Completed
-          </Link>
-          <Link href="/cancelled-jobs" className="text-black/70 hover:text-black">
-            Cancelled
-          </Link>
-          <Link href="/customers" className="text-black/70 hover:text-black">
-            Customers
-          </Link>
-          <Link href="/invoices" className="text-black/70 hover:text-black">
-            Invoices
-          </Link>
-          <Link href="/vendors" className="text-black/70 hover:text-black">
-            Vendors
-          </Link>
-          <Link href="/weekly" className="text-black/70 hover:text-black">
-            Weekly summaries
-          </Link>
-          <Link href="/hours" className="text-black/70 hover:text-black">
-            Hours
-          </Link>
-          {isFullAdmin(profile?.role) && (
-            <Link href="/team" className="text-black/70 hover:text-black">
-              Agents &amp; Dispatchers
-            </Link>
-          )}
-          {isFullAdmin(profile?.role) && (
-            <Link href="/agents" className="text-black/70 hover:text-black">
-              Users
-            </Link>
-          )}
-          <span className="text-black/40">{user?.email}</span>
-          <form action={signOut}>
-            <button type="submit" className="text-black/70 hover:text-black">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
-      <main className="flex-1 px-6 py-6 print:p-0">
+    <>
+      <AppShell user={shellUser} unreadCount={unreadCount} initialCollapsed={initialCollapsed} signOutAction={signOut}>
         <RosterProvider agents={agentNames} dispatchers={dispatcherNames}>
           {children}
         </RosterProvider>
-      </main>
+      </AppShell>
       {user && <ClockInPrompt hasOpenEntry={hasOpenEntry} />}
-    </div>
+    </>
   );
 }

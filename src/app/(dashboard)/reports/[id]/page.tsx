@@ -24,10 +24,13 @@ function formatDate(d: string) {
 
 export default async function ReportDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ add?: string | string[] }>;
 }) {
   const { id } = await params;
+  const openAddOnLoad = (await searchParams).add === "1";
   await rolloverStaleAppointments();
 
   const supabase = await createClient();
@@ -187,6 +190,7 @@ export default async function ReportDetailPage({
           openLeads={openLeads}
           contactedVendorsByJobId={contactedVendorsByJobId}
           latestNoteByJobId={latestNoteByJobId}
+          openAddOnLoad={openAddOnLoad}
         />
       </div>
     </div>

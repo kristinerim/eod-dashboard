@@ -1733,3 +1733,11 @@ create policy "staff can record their own sent messages" on communications for i
       or (job_id is null and lead_id is null and customer_id is null and vendor_id is not null)
     )
   );
+
+-- ---------------------------------------------------------------------------
+-- Unread tracking for the Messages panel (top bar). A received message is
+-- unread until someone opens it. Older messages count as already read.
+-- ---------------------------------------------------------------------------
+alter table communications add column if not exists read_at timestamptz;
+update communications set read_at = coalesce(read_at, created_at) where direction = 'inbound' and read_at is null;
+create index if not exists communications_unread_idx on communications (created_at desc) where direction = 'inbound' and read_at is null;

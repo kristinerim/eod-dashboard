@@ -11,3 +11,11 @@ export function isFullAdmin(role: Role | string | null | undefined): boolean {
 export function isSupervisor(role: Role | string | null | undefined): boolean {
   return isFullAdmin(role) || role === "team_leader";
 }
+
+/** The names shown for each role in the top-bar profile menu. */
+export const ROLE_MENU_LABELS: Record<string, string> = {
+  operations_manager: "Owner",
+  admin_coordinator: "Admin",
+  team_leader: "Team Lead",
+  agent: "Agent / Dispatcher",
+};

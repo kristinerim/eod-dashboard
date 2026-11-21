@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import JobForm, { type OpenLead } from "./JobForm";
@@ -209,6 +209,7 @@ export default function JobsTable({
   openLeads,
   contactedVendorsByJobId,
   latestNoteByJobId,
+  openAddOnLoad = false,
 }: {
   jobs: Job[];
   reportId: string;
@@ -220,6 +221,8 @@ export default function JobsTable({
   openLeads?: OpenLead[];
   contactedVendorsByJobId?: Record<string, (ContactedVendorRow & { id: string })[]>;
   latestNoteByJobId?: Record<string, { note: string; author: string | null; created_at: string }>;
+  // Opened from the menu's "Create Job": the Add job form is already open.
+  openAddOnLoad?: boolean;
 }) {
   const canEditJob = (job: Job) =>
     currentRole !== "agent" || job.agent === currentAgentName;
@@ -231,7 +234,13 @@ export default function JobsTable({
   const [sortKey, setSortKey] = useState<keyof Job>("row_number");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
-  const [addingJob, setAddingJob] = useState(false);
+  const [addingJob, setAddingJob] = useState(openAddOnLoad && isToday);
+
+  // The "?add=1" in the address only means "open the form once": drop it, so a
+  // refresh or the Back button doesn't pop the form open again.
+  useEffect(() => {
+    if (openAddOnLoad) window.history.replaceState(null, "", window.location.pathname);
+  }, [openAddOnLoad]);
 
   function handleDelete(jobId: string) {
     if (!confirm("Delete this job entry?")) return;
