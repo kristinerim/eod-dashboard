@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { summarizeJobs, weekRangeFor, type JobSummaryInput } from "@/lib/aggregate";
 import { fetchAllRows } from "@/lib/supabase/paginate";
@@ -66,7 +67,7 @@ export default async function WeeklyPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold">Weekly summaries</h1>
-      <p className="text-sm text-black/60">Weeks run Sunday through Saturday.</p>
+      <p className="text-sm text-black/60">Weeks run Sunday through Saturday. Click a week to see each day.</p>
       {weeks.length === 0 ? (
         <p className="text-sm text-black/70">No weeks with jobs yet.</p>
       ) : (
@@ -85,9 +86,11 @@ export default async function WeeklyPage() {
             {weeks.map((w) => {
               const s = summarizeJobs(w.jobs);
               return (
-                <tr key={w.start} className="border-t border-black/10">
+                <tr key={w.start} className="border-t border-black/10 hover:bg-black/[0.03]">
                   <td className="px-4 py-2">
-                    {formatShortDate(w.start)} – {formatShortDate(w.end)}
+                    <Link href={`/weekly/${w.start}`} className="text-qt-accent underline-offset-2 hover:underline">
+                      {formatShortDate(w.start)} – {formatShortDate(w.end)}
+                    </Link>
                   </td>
                   <td className="px-4 py-2">{formatCurrency(s.totalProfit)}</td>
                   <td className="px-4 py-2">{s.jobCount}</td>
