@@ -35,8 +35,11 @@ export async function updateSession(request: NextRequest) {
   // The customer signing link is deliberately public — no account, no login.
   // Its own authorization is the unguessable token in the URL, not a session.
   const isPublicSignPage = request.nextUrl.pathname.startsWith("/sign/");
+  // Email/SMS providers call these addresses directly. They have no login; each
+  // one checks its own secret instead.
+  const isWebhook = request.nextUrl.pathname.startsWith("/api/webhooks/");
 
-  if (!user && !isLoginPage && !isPublicSignPage) {
+  if (!user && !isLoginPage && !isPublicSignPage && !isWebhook) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);

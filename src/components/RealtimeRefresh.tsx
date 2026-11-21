@@ -13,7 +13,7 @@ const SETTLE_MS = 1500;
 const MIN_GAP_MS = 5000;
 
 interface Props {
-  tables: ("jobs" | "reports" | "time_entries" | "leads" | "invoices" | "job_notes")[];
+  tables: ("jobs" | "reports" | "time_entries" | "leads" | "invoices" | "job_notes" | "communications")[];
   filter?: string;
 }
 

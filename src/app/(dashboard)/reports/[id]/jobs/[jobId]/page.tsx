@@ -10,6 +10,9 @@ import { JOB_TYPE_FIELD_KEYS, JOB_DETAIL_FIELD_DEFS } from "@/lib/jobTypeFields"
 import JobDetailActions from "./JobDetailActions";
 import JobInvoicesSection from "./JobInvoicesSection";
 import JobNotesSection, { type JobNote } from "./JobNotesSection";
+import RealtimeRefresh from "@/components/RealtimeRefresh";
+import { emailConfig } from "@/lib/email/send";
+import JobCommunications, { type CommunicationRow, type TemplateRow, type VendorContact } from "./JobCommunications";
 
 function formatCurrency(n: number | null) {
   if (n === null) return "-";
@@ -93,6 +96,52 @@ export default async function JobDetailPage({
     .select("id, note, author, created_at, created_by, voided_at, voided_by_name")
     .eq("job_id", jobId)
     .order("created_at", { ascending: false });
+
+  // Everything for the Communications section: this job's messages (the database
+  // limits them to people who can see the job), the email templates, and the
+  // email addresses of the vendors on the job.
+  const [{ data: communications }, { data: templates }] = await Promise.all([
+    supabase
+      .from("communications")
+      .select("id, channel, direction, party_type, party_name, from_address, to_address, subject, body, status, status_detail, sent_by_name, created_at")
+      .eq("job_id", jobId)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("message_templates")
+      .select("id, audience, name, subject, body")
+      .eq("channel", "email")
+      .eq("is_active", true)
+      .order("sort_order"),
+  ]);
+  const vendorIds = (contactedVendors ?? []).map((v) => v.vendor_id).filter((x): x is string => !!x);
+  const { data: vendorEmails } = vendorIds.length
+    ? await supabase.from("vendors").select("id, email, secondary_email").in("id", vendorIds)
+    : { data: [] as { id: string; email: string | null; secondary_email: string | null }[] };
+  const emailByVendor = new Map((vendorEmails ?? []).map((v) => [v.id, v]));
+  const vendorContacts: VendorContact[] = (contactedVendors ?? []).map((v) => {
+    const e = v.vendor_id ? emailByVendor.get(v.vendor_id) : undefined;
+    return {
+      name: v.vendor_name ?? "Vendor",
+      email: e?.email ?? null,
+      secondaryEmail: e?.secondary_email ?? null,
+      quote: v.quote_amount !== null ? formatCurrency(v.quote_amount) : "",
+      eta: v.eta_given ?? "",
+      isGo: v.status === "go",
+    };
+  });
+  const pickup = [job.service_street_address, job.service_city, [job.state, job.service_zip].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(", ");
+  const mergeBase: Record<string, string> = {
+    job_number: job.job_number ?? "",
+    service: job.job_type ?? "",
+    pickup,
+    dropoff: job.drop_off_location ?? "",
+    vehicle: job.year_make_model ?? "",
+    amount: job.job_amount !== null && job.job_amount !== undefined ? formatCurrency(job.job_amount) : "",
+    agent_name: profile?.agent_name ?? job.agent ?? "",
+    eta: job.eta_minutes !== null && job.eta_minutes !== undefined ? `${job.eta_minutes} minutes` : "",
+  };
 
   const sections: { title: string; fields: { label: string; value: React.ReactNode }[] }[] = [
     {
@@ -390,6 +439,18 @@ export default async function JobDetailPage({
           job_name: job.job_name,
         }}
         invoices={(invoices ?? []) as Invoice[]}
+      />
+
+      <RealtimeRefresh tables={["communications"]} />
+      <JobCommunications
+        jobId={jobId}
+        communications={(communications ?? []) as CommunicationRow[]}
+        templates={(templates ?? []) as TemplateRow[]}
+        customer={{ name: job.customer_name ?? "", email: job.client_email ?? null }}
+        vendors={vendorContacts}
+        mergeBase={mergeBase}
+        invoices={(invoices ?? []).map((i) => ({ number: (i.invoice_number as string | null) ?? null, token: i.signature_token as string }))}
+        emailEnabled={emailConfig() !== null}
       />
     </div>
   );

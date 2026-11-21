@@ -1465,3 +1465,151 @@ select distinct btrim(p.agent_name), true, false
 from profiles p
 where p.role = 'agent' and p.agent_name is not null and btrim(p.agent_name) <> ''
 on conflict do nothing;
+
+-- Communications: templates, messages, do-not-contact list (see add-communications.sql)
+-- Communications: every email (and, later, text) sent from or received by the
+-- Hub, filed under its job. Also reusable message templates and a list of
+-- addresses we must not contact. Safe to run more than once.
+
+-- 1. Templates -------------------------------------------------------------
+create table if not exists message_templates (
+  id uuid primary key default gen_random_uuid(),
+  channel text not null check (channel in ('email', 'sms')),
+  audience text not null default 'customer' check (audience in ('customer', 'vendor')),
+  name text not null,
+  subject text,
+  body text not null,
+  is_active boolean not null default true,
+  sort_order integer not null default 100,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists message_templates_channel_name_idx on message_templates (channel, audience, lower(name));
+
+alter table message_templates enable row level security;
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename = 'message_templates' and policyname = 'authenticated can read templates') then
+    create policy "authenticated can read templates" on message_templates for select to authenticated using (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'message_templates' and policyname = 'full admins can add templates') then
+    create policy "full admins can add templates" on message_templates for insert to authenticated with check (is_full_admin());
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'message_templates' and policyname = 'full admins can edit templates') then
+    create policy "full admins can edit templates" on message_templates for update to authenticated using (is_full_admin()) with check (is_full_admin());
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'message_templates' and policyname = 'full admins can delete templates') then
+    create policy "full admins can delete templates" on message_templates for delete to authenticated using (is_full_admin());
+  end if;
+end $$;
+
+-- 2. Communications --------------------------------------------------------
+create table if not exists communications (
+  id uuid primary key default gen_random_uuid(),
+  job_id uuid not null references jobs(id) on delete cascade,
+  channel text not null check (channel in ('email', 'sms')),
+  direction text not null check (direction in ('outbound', 'inbound')),
+  party_type text not null default 'customer' check (party_type in ('customer', 'vendor', 'other')),
+  party_name text,
+  from_address text,
+  to_address text,
+  subject text,
+  body text not null,
+  status text not null default 'queued'
+    check (status in ('queued', 'sent', 'delivered', 'bounced', 'complained', 'failed', 'received')),
+  status_detail text,
+  provider text,
+  provider_message_id text,
+  -- A random id the form creates once per message: sending the same one twice
+  -- can never create (or send) a second message.
+  idempotency_key text,
+  sent_by uuid references auth.users(id) on delete set null,
+  sent_by_name text,
+  template_id uuid references message_templates(id) on delete set null,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  delivered_at timestamptz
+);
+create unique index if not exists communications_idempotency_idx on communications (idempotency_key) where idempotency_key is not null;
+create unique index if not exists communications_provider_message_idx on communications (provider, provider_message_id) where provider_message_id is not null;
+create index if not exists communications_job_idx on communications (job_id, created_at);
+
+alter table communications enable row level security;
+do $$
+begin
+  -- Anyone who can see the job can read its communications.
+  if not exists (select 1 from pg_policies where tablename = 'communications' and policyname = 'job viewers can read communications') then
+    create policy "job viewers can read communications" on communications for select to authenticated
+      using (is_supervisor() or exists (select 1 from jobs j where j.id = communications.job_id and j.agent = current_agent_name()));
+  end if;
+  -- Staff can only record messages as themselves, on jobs they can work on.
+  -- Status changes and inbound replies are written by the server itself.
+  if not exists (select 1 from pg_policies where tablename = 'communications' and policyname = 'staff can record their own sent messages') then
+    create policy "staff can record their own sent messages" on communications for insert to authenticated
+      with check (
+        direction = 'outbound' and sent_by = auth.uid()
+        and (is_supervisor() or exists (select 1 from jobs j where j.id = communications.job_id and j.agent = current_agent_name()))
+      );
+  end if;
+end $$;
+
+-- Show new messages and status changes on open job pages straight away.
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'communications') then
+    alter publication supabase_realtime add table communications;
+  end if;
+end $$;
+
+-- 3. Addresses we must not contact ------------------------------------------
+-- Filled automatically when an address bounces, is reported as spam, or the
+-- person asks to stop. Checked before every send.
+create table if not exists contact_suppressions (
+  id uuid primary key default gen_random_uuid(),
+  channel text not null check (channel in ('email', 'sms')),
+  address text not null,
+  reason text not null,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists contact_suppressions_idx on contact_suppressions (channel, lower(address));
+
+alter table contact_suppressions enable row level security;
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename = 'contact_suppressions' and policyname = 'supervisors can read the do-not-contact list') then
+    create policy "supervisors can read the do-not-contact list" on contact_suppressions for select to authenticated using (is_supervisor());
+  end if;
+end $$;
+
+-- 4. Starter email templates -------------------------------------------------
+-- Merge fields in {{double braces}} are filled in from the job when the agent
+-- picks a template; the agent can edit everything before sending.
+insert into message_templates (channel, audience, name, subject, body, sort_order) values
+('email', 'customer', 'Job confirmation',
+ 'Your Quick Towing service is confirmed – Job {{job_number}}',
+ E'Hello {{customer_name}},\n\nThank you for choosing {{company_name}}. Your service request is confirmed.\n\nJob #: {{job_number}}\nService: {{service}}\nLocation: {{pickup}}\n\nWe will let you know as soon as a driver is on the way. If anything changes, reply to this email or call us at {{company_phone}}.\n\n{{agent_name}}\n{{company_name}}', 10),
+('email', 'customer', 'Customer authorization request',
+ 'Please authorize your service – Job {{job_number}}',
+ E'Hello {{customer_name}},\n\nBefore we dispatch your service, please review the details and authorize them using this secure link:\n\n{{invoice_link}}\n\nJob #: {{job_number}}\nService: {{service}}\nTotal: {{amount}}\n\nIf you have any questions, reply to this email or call {{company_phone}}.\n\n{{agent_name}}\n{{company_name}}', 20),
+('email', 'customer', 'Driver dispatch confirmation',
+ 'A driver is on the way – Job {{job_number}}',
+ E'Hello {{customer_name}},\n\nA driver has been dispatched for your service.\n\nJob #: {{job_number}}\nDriver / company: {{vendor_name}}\nEstimated arrival: {{eta}}\n\nPlease keep your phone nearby. If you need anything, reply to this email or call {{company_phone}}.\n\n{{agent_name}}\n{{company_name}}', 30),
+('email', 'customer', 'Driver ETA update',
+ 'Updated arrival time – Job {{job_number}}',
+ E'Hello {{customer_name}},\n\nHere is an update on your service. Your driver''s estimated arrival is now {{eta}}.\n\nJob #: {{job_number}}\n\nThank you for your patience. Reply to this email or call {{company_phone}} if you need anything.\n\n{{agent_name}}\n{{company_name}}', 40),
+('email', 'customer', 'Service completion confirmation',
+ 'Your service is complete – Job {{job_number}}',
+ E'Hello {{customer_name}},\n\nYour service is complete. Thank you for choosing {{company_name}}.\n\nJob #: {{job_number}}\nService: {{service}}\n\nIf anything is not right, reply to this email or call {{company_phone}} and we will make it right.\n\n{{agent_name}}\n{{company_name}}', 50),
+('email', 'customer', 'Invoice and payment link',
+ 'Your invoice – Job {{job_number}}',
+ E'Hello {{customer_name}},\n\nYour invoice for Job {{job_number}} is ready. You can view it here:\n\n{{invoice_link}}\n\nInvoice: {{invoice_number}}\nAmount: {{amount}}\n\nFor your security we never send card numbers by email. Questions? Reply to this email or call {{company_phone}}.\n\n{{agent_name}}\n{{company_name}}', 60),
+('email', 'vendor', 'Dispatch request',
+ 'Service request – Job {{job_number}}',
+ E'Hello {{vendor_name}},\n\nWe have a service request in your area.\n\nJob #: {{job_number}}\nService: {{service}}\nPickup: {{pickup}}\nDrop-off: {{dropoff}}\nVehicle: {{vehicle}}\n\nPlease reply with your price, estimated arrival time, and whether you can accept this job.\n\n{{agent_name}}\n{{company_name}} · {{company_phone}}', 10),
+('email', 'vendor', 'Dispatch confirmation',
+ 'Job confirmed – {{job_number}}',
+ E'Hello {{vendor_name}},\n\nThank you — this job is yours.\n\nJob #: {{job_number}}\nService: {{service}}\nPickup: {{pickup}}\nDrop-off: {{dropoff}}\nAgreed price: {{vendor_quote}}\nAgreed arrival: {{eta}}\n\nPlease let us know right away if anything changes.\n\n{{agent_name}}\n{{company_name}} · {{company_phone}}', 20),
+('email', 'vendor', 'ETA / status check',
+ 'Status check – Job {{job_number}}',
+ E'Hello {{vendor_name}},\n\nCan you please confirm your current status and estimated arrival for Job {{job_number}} at {{pickup}}?\n\nThank you,\n{{agent_name}}\n{{company_name}} · {{company_phone}}', 30)
+on conflict do nothing;
